@@ -1,0 +1,5 @@
+.cache
+build
+vcpkg_installed
+__pycache__
+cmake-build-debug
