@@ -1,0 +1,8 @@
+{
+    "name":"irods-s3-bridge",
+    "version":"0.0.0",
+    "dependencies":[
+        "fmt",
+        "boost"
+    ]
+}
