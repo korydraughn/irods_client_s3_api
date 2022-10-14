@@ -3,6 +3,8 @@
     "version":"0.0.0",
     "dependencies":[
         "fmt",
-        "boost"
+        "boost",
+        "nlohmann-json",
+        "openssl"
     ]
 }
