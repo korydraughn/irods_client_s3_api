@@ -12,6 +12,8 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/beast.hpp>
+#include <boost/beast/http/buffer_body.hpp>
+#include <boost/beast/http/detail/type_traits.hpp>
 #include <boost/beast/http/dynamic_body.hpp>
 #include <boost/beast/http/error.hpp>
 #include <boost/beast/http/fields.hpp>
@@ -21,14 +23,61 @@
 
 #include <boost/beast/http/serializer.hpp>
 #include <boost/beast/http/string_body.hpp>
+#include <boost/beast/http/type_traits.hpp>
+
+#include <boost/url/src.hpp>
+
 #include <coroutine>
 #include <iostream>
+#include <irods/getRodsEnv.h>
+#include <irods/miscUtil.h>
+#include <irods/rcConnect.h>
+#include <irods/rodsError.h>
+#include <memory>
+#include <type_traits>
 
 namespace asio = boost::asio;
 namespace this_coro = boost::asio::this_coro;
 namespace beast = boost::beast;
 
-using request_parser = beast::http::request_parser<class Body>;
+using parser_type = boost::beast::http::parser<true, boost::beast::http::buffer_body>;
+
+bool authenticate(rcComm_t* connection);
+struct rcComm_Deleter
+{
+    rcComm_Deleter() = default;
+    constexpr void operator()(rcComm_t* conn) const noexcept
+    {
+        if (conn == nullptr) {
+            return;
+        }
+        rcDisconnect(conn);
+        freeRcComm(conn);
+    }
+};
+std::unique_ptr<rcComm_t, rcComm_Deleter> get_connection()
+{
+    rodsEnv env;
+    rErrMsg_t err;
+    std::unique_ptr<rcComm_t, rcComm_Deleter> result;
+    getRodsEnv(&env);
+    // For some reason it isn't working with the assignment operator
+    result.reset(rcConnect(env.rodsHost, env.rodsPort, env.rodsUserName, env.rodsZone, 0, &err));
+    if (result == nullptr) {
+        std::cerr << err.msg << std::endl;
+        // Good old code 2143987421 (Manual not consulted due to draftiness, brrr)
+        exit(2143987421);
+    }
+
+    return std::move(result);
+}
+
+asio::awaitable<void> handle_getobject(asio::ip::tcp::socket socket, parser_type& parser)
+{
+    auto thing = get_connection();
+    auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
+    
+}
 
 // for now let's just list out what we get.
 asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
@@ -43,8 +92,11 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
         // handle me please!
     }
     for (const auto& field : parser.get()) {
-        std::cout << "header? " << field.name_string() << ":" << field.value() << std::endl;
+        std::cout << "header: " << field.name_string() << ":" << field.value() << std::endl;
     }
+    std::cout << "target: " << parser.get().target() << std::endl;
+    auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
+    std::cout<<url_and_stuff<<std::endl;
     char buf[512];
     while (!parser.is_done()) {
         std::cout << "Reading" << std::endl;
@@ -61,6 +113,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
     beast::http::response<beast::http::string_body> response;
     response.body() = "Hi";
     response.result(beast::http::status::ok);
+    response.insert("etag", "fuck");
     beast::http::response_serializer<beast::http::string_body> sr{response};
     beast::http::write(socket, sr, ec);
     co_return;
