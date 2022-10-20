@@ -25,6 +25,7 @@
 #include <boost/beast/http/string_body.hpp>
 #include <boost/beast/http/type_traits.hpp>
 
+#include <boost/beast/http/verb.hpp>
 #include <boost/url/src.hpp>
 
 #include <coroutine>
@@ -42,7 +43,7 @@ namespace beast = boost::beast;
 
 using parser_type = boost::beast::http::parser<true, boost::beast::http::buffer_body>;
 
-bool authenticate(rcComm_t* connection);
+bool authenticate(rcComm_t* connection, const std::string_view& username);
 struct rcComm_Deleter
 {
     rcComm_Deleter() = default;
@@ -76,7 +77,6 @@ asio::awaitable<void> handle_getobject(asio::ip::tcp::socket socket, parser_type
 {
     auto thing = get_connection();
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
-    
 }
 
 // for now let's just list out what we get.
@@ -95,8 +95,52 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
         std::cout << "header: " << field.name_string() << ":" << field.value() << std::endl;
     }
     std::cout << "target: " << parser.get().target() << std::endl;
-    auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
-    std::cout<<url_and_stuff<<std::endl;
+    auto url = boost::urls::url_view(parser.get().base().target());
+    auto segments = url.segments();
+    auto params = url.params();
+    std::cout << segments << " " << segments.empty() << std::endl;
+    switch (parser.get().method()) {
+        case boost::beast::http::verb::get:
+            if (segments.empty() || params.contains("encoding-type=url")) {
+                if (params.contains("encoding-type=url"))
+                    // Among other things, listobjects should be handled here.
+                    std::cout << "Listobjects detected" << std::endl;
+            }
+            else {
+                // GetObject
+                std::cout << "getobject detected" << std::endl;
+            }
+            break;
+        case boost::beast::http::verb::put:
+            if (parser.get().find("x-amz-copy-source") != parser.get().end()) {
+                // copyobject
+                std::cout << "Copyobject detected" << std::endl;
+            }
+            else {
+                // putobject
+                std::cout << "putobject detected" << std::endl;
+            }
+            break;
+        case boost::beast::http::verb::head:
+            // Probably just headbucket and headobject here.
+            // and headbucket isn't on the immediate list
+            // of starting point.
+            if (url.segments().empty()) {
+                std::cout << "Headbucket detected" << std::endl;
+            }
+            else {
+                std::cout << "Headobject detected" << std::endl;
+            }
+            break;
+        case boost::beast::http::verb::delete_:
+            // DeleteObject
+            std::cout << "Deleteobject detected" << std::endl;
+            break;
+        default:
+            std::cerr << "Oh no..." << std::endl;
+            exit(37);
+            break;
+    }
     char buf[512];
     while (!parser.is_done()) {
         std::cout << "Reading" << std::endl;
