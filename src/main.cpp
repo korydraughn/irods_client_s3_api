@@ -96,15 +96,16 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
     }
     std::cout << "target: " << parser.get().target() << std::endl;
     auto url = boost::urls::url_view(parser.get().base().target());
-    auto segments = url.segments();
-    auto params = url.params();
+    const auto& segments = url.segments();
+    const auto& params = url.params();
     std::cout << segments << " " << segments.empty() << std::endl;
     switch (parser.get().method()) {
         case boost::beast::http::verb::get:
-            if (segments.empty() || params.contains("encoding-type=url")) {
-                if (params.contains("encoding-type=url"))
-                    // Among other things, listobjects should be handled here.
+            if (segments.empty() || params.contains("encoding-type=url") || params.contains("list-type=2")) {
+                // Among other things, listobjects should be handled here.
+                if (params.contains("encoding-type=url")) {
                     std::cout << "Listobjects detected" << std::endl;
+                }
             }
             else {
                 // GetObject
