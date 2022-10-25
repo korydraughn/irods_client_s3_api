@@ -1,11 +1,14 @@
 #include "./event_loop.hpp"
 #include "./hmac.hpp"
+#include "./bucket.hpp"
+#include "boost/url/url_view.hpp"
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/asio/detail/descriptor_ops.hpp>
+#include <boost/asio/detail/socket_ops.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/ip/address.hpp>
@@ -26,10 +29,13 @@
 #include <boost/beast/http/type_traits.hpp>
 
 #include <boost/beast/http/verb.hpp>
+#include <boost/beast/http/write.hpp>
 #include <boost/url/src.hpp>
 
 #include <coroutine>
+#include <filesystem>
 #include <iostream>
+#include <fstream>
 #include <irods/getRodsEnv.h>
 #include <irods/miscUtil.h>
 #include <irods/rcConnect.h>
@@ -73,10 +79,27 @@ std::unique_ptr<rcComm_t, rcComm_Deleter> get_connection()
     return std::move(result);
 }
 
-asio::awaitable<void> handle_getobject(asio::ip::tcp::socket socket, parser_type& parser)
+asio::awaitable<void>
+handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
 {
-    auto thing = get_connection();
+    // auto thing = get_connection();
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
+    // Permission verification stuff should go roughly here.
+    std::filesystem::path p;
+    p = irods::s3::resolve_bucket(url.segments());
+    if (std::filesystem::exists(p)) {
+        boost::beast::http::response<boost::beast::http::file_body> response;
+        boost::beast::error_code ec;
+        response.result(boost::beast::http::status::accepted);
+        response.body().open(p.c_str(), boost::beast::file_mode::scan, ec);
+        boost::beast::http::write(socket, response);
+    }
+    else {
+        boost::beast::http::response<boost::beast::http::buffer_body> response;
+        response.result(boost::beast::http::status::not_found);
+        boost::beast::http::write(socket, response);
+    }
+    co_return;
 }
 
 // for now let's just list out what we get.
@@ -110,6 +133,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
             else {
                 // GetObject
                 std::cout << "getobject detected" << std::endl;
+                co_await handle_getobject(socket, parser, url);
             }
             break;
         case boost::beast::http::verb::put:
@@ -155,12 +179,12 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
         else if (ec)
             co_return;
     }
-    beast::http::response<beast::http::string_body> response;
-    response.body() = "Hi";
-    response.result(beast::http::status::ok);
-    response.insert("etag", "etag");
-    beast::http::response_serializer<beast::http::string_body> sr{response};
-    beast::http::write(socket, sr, ec);
+    // beast::http::response<beast::http::string_body> response;
+    // response.body() = "Hi";
+    // response.result(beast::http::status::ok);
+    // response.insert("etag", "etag");
+    // beast::http::response_serializer<beast::http::string_body> sr{response};
+    // beast::http::write(socket, sr, ec);
     co_return;
 }
 
