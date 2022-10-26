@@ -1,6 +1,6 @@
 #pragma once
 
-#include "boost/url/segments_view.hpp"
+#include "boost/url.hpp"
 #include <filesystem>
 
 namespace irods::s3

@@ -18,11 +18,14 @@
 #include <boost/beast/http/buffer_body.hpp>
 #include <boost/beast/http/detail/type_traits.hpp>
 #include <boost/beast/http/dynamic_body.hpp>
+#include <boost/beast/http/empty_body.hpp>
 #include <boost/beast/http/error.hpp>
 #include <boost/beast/http/fields.hpp>
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/parser.hpp>
 #include <boost/beast/http/read.hpp>
+
+#include <boost/stacktrace.hpp>
 
 #include <boost/beast/http/serializer.hpp>
 #include <boost/beast/http/string_body.hpp>
@@ -30,22 +33,37 @@
 
 #include <boost/beast/http/verb.hpp>
 #include <boost/beast/http/write.hpp>
+#include <boost/stacktrace/stacktrace_fwd.hpp>
+#include <boost/system/system_error.hpp>
 #include <boost/url/src.hpp>
 
-#include <coroutine>
+#include <experimental/coroutine>
 #include <filesystem>
+#include <ios>
 #include <iostream>
 #include <fstream>
-#include <irods/getRodsEnv.h>
-#include <irods/miscUtil.h>
+
+#include <irods/filesystem/filesystem.hpp>
+#include <irods/filesystem/filesystem_error.hpp>
 #include <irods/rcConnect.h>
-#include <irods/rodsError.h>
+#include <irods/rodsClient.h>
+#include <irods/client_connection.hpp>
+#include <irods/irods_client_api_table.hpp>
+#include <irods/irods_pack_table.hpp>
+#include <irods/irods_parse_command_line_options.hpp>
+#include <irods/filesystem.hpp>
+#include <irods/rcMisc.h>
+#include <irods/rodsPath.h>
+#include <irods/dstream.hpp>
+#include <irods/transport/default_transport.hpp>
+
 #include <memory>
 #include <type_traits>
 
 namespace asio = boost::asio;
 namespace this_coro = boost::asio::this_coro;
 namespace beast = boost::beast;
+namespace fs = irods::experimental::filesystem;
 
 using parser_type = boost::beast::http::parser<true, boost::beast::http::buffer_body>;
 
@@ -59,21 +77,23 @@ struct rcComm_Deleter
             return;
         }
         rcDisconnect(conn);
-        freeRcComm(conn);
     }
 };
 std::unique_ptr<rcComm_t, rcComm_Deleter> get_connection()
 {
     rodsEnv env;
     rErrMsg_t err;
-    std::unique_ptr<rcComm_t, rcComm_Deleter> result;
     getRodsEnv(&env);
+    std::unique_ptr<rcComm_t, rcComm_Deleter> result = nullptr;
     // For some reason it isn't working with the assignment operator
     result.reset(rcConnect(env.rodsHost, env.rodsPort, env.rodsUserName, env.rodsZone, 0, &err));
-    if (result == nullptr) {
+    if (result == nullptr || err.status) {
         std::cerr << err.msg << std::endl;
         // Good old code 2143987421 (Manual not consulted due to draftiness, brrr)
-        exit(2143987421);
+        // exit(2143987421);
+    }
+    if (const int ec = clientLogin(result.get())) {
+        std::cout << "Failed to log in" << std::endl;
     }
 
     return std::move(result);
@@ -82,23 +102,73 @@ std::unique_ptr<rcComm_t, rcComm_Deleter> get_connection()
 asio::awaitable<void>
 handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
 {
-    // auto thing = get_connection();
+    auto thing = get_connection();
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
     std::filesystem::path p;
+
     p = irods::s3::resolve_bucket(url.segments());
-    if (std::filesystem::exists(p)) {
-        boost::beast::http::response<boost::beast::http::file_body> response;
-        boost::beast::error_code ec;
-        response.result(boost::beast::http::status::accepted);
-        response.body().open(p.c_str(), boost::beast::file_mode::scan, ec);
-        boost::beast::http::write(socket, response);
+    fs::path path = p.c_str();
+    std::cout << "Requested " << path << std::endl;
+    try {
+        if (fs::client::exists(*thing, path)) {
+            std::cout << "Trying to write file" << std::endl;
+            boost::beast::http::response<boost::beast::http::buffer_body> response;
+            boost::beast::http::response_serializer<boost::beast::http::buffer_body> serializer{response};
+            char buffer_backing[4096];
+            response.result(boost::beast::http::status::accepted);
+            std::string length_field =
+                std::to_string(irods::experimental::filesystem::client::data_object_size(*thing, path));
+            response.insert(boost::beast::http::field::content_length, length_field);
+            boost::beast::http::write_header(socket, serializer);
+
+            boost::beast::error_code ec;
+
+            irods::experimental::io::client::default_transport xtrans{*thing};
+            irods::experimental::io::idstream d{xtrans, path};
+            std::streampos current, size;
+            while (d.good()) {
+                d.read(buffer_backing, 4096);
+                current = d.gcount();
+                size += current;
+                response.body().data = buffer_backing;
+                response.body().size = current;
+                std::cout << "Wrote " << current << " bytes" << std::endl;
+                if (d.bad()) {
+                    std::cerr << "Weird error?" << std::endl;
+                    exit(12);
+                }
+                try {
+                    boost::beast::http::write(socket, serializer);
+                }
+                catch (boost::system::system_error& e) {
+                    if (e.code() != boost::beast::http::error::need_buffer) {
+                        std::cout << "Not a good error!" << std::endl;
+                        throw e;
+                    }
+                    else {
+                        std::cout << "Good error!" << std::endl;
+                    }
+                }
+            }
+            response.body().size = d.gcount();
+            response.body().more = false;
+            boost::beast::http::write(socket, serializer);
+            std::cout << "Wrote " << size << " bytes total" << std::endl;
+        }
+        else {
+            std::cout << "Trying to write no" << std::endl;
+            boost::beast::http::response<boost::beast::http::empty_body> response;
+            response.result(boost::beast::http::status::not_found);
+            std::cerr << "Could not find file" << std::endl;
+            boost::beast::http::write(socket, response);
+        }
     }
-    else {
-        boost::beast::http::response<boost::beast::http::buffer_body> response;
-        response.result(boost::beast::http::status::not_found);
-        boost::beast::http::write(socket, response);
+    catch (std::exception& e) {
+        std::cout << boost::stacktrace::stacktrace() << std::endl;
+        std::cout << "error! " << e.what() << std::endl;
     }
+
     co_return;
 }
 
@@ -200,6 +270,10 @@ asio::awaitable<void> listener()
 }
 int main()
 {
+    irods::api_entry_table& api_tbl = irods::get_client_api_table();
+    irods::pack_entry_table& pk_tbl = irods::get_pack_table();
+    init_api_table(api_tbl, pk_tbl);
+
     asio::io_context io_context(1);
     auto address = asio::ip::make_address("0.0.0.0");
     asio::signal_set signals(io_context, SIGINT, SIGTERM);
