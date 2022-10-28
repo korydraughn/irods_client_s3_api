@@ -1,8 +1,11 @@
 #include "./event_loop.hpp"
 #include "./hmac.hpp"
 #include "./bucket.hpp"
+#include "boost/url/url.hpp"
 #include "boost/url/url_view.hpp"
 
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio.hpp>
@@ -37,11 +40,14 @@
 #include <boost/system/system_error.hpp>
 #include <boost/url/src.hpp>
 
+#include <chrono>
 #include <experimental/coroutine>
 #include <filesystem>
 #include <ios>
 #include <iostream>
 #include <fstream>
+
+#include <fmt/chrono.h>
 
 #include <irods/filesystem/filesystem.hpp>
 #include <irods/filesystem/filesystem_error.hpp>
@@ -98,6 +104,33 @@ std::unique_ptr<rcComm_t, rcComm_Deleter> get_connection()
 
     return std::move(result);
 }
+std::string get_user_secret_key(rcComm_t* conn, const std::string_view& user)
+{
+    return "heck";
+}
+
+std::string
+get_user_signing_key(const std::string_view& secret_key, const std::string_view& date, const std::string_view& region)
+{
+    // Hate it when amazon gives me homework
+    // during implementation of their protocol
+    std::cout << "date time component is " << date << std::endl;
+    auto date_key = irods::s3::authentication::hmac_sha_256(std::string("AWS4").append(secret_key), date);
+    auto date_region_key = irods::s3::authentication::hmac_sha_256(date_key, region);
+    // 'date region service key'
+    // :eyeroll:
+    auto date_region_service_key = irods::s3::authentication::hmac_sha_256(date_region_key, "s3");
+    return irods::s3::authentication::hmac_sha_256(date_region_service_key, "aws4_request");
+}
+
+bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls::url& url)
+{
+    std::vector<std::string> auth_fields;
+    // should be equal to something like
+    // [ 'AWS4-SHA256-HMAC Credential=...', 'SignedHeaders=...', 'Signature=...']
+    //
+    boost::split(auth_fields, request.get().at("Authorization"), boost::is_any_of(","));
+}
 
 asio::awaitable<void>
 handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
@@ -105,10 +138,8 @@ handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost
     auto thing = get_connection();
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
-    std::filesystem::path p;
 
-    p = irods::s3::resolve_bucket(url.segments());
-    fs::path path = p.c_str();
+    fs::path path = irods::s3::resolve_bucket(url.segments()).c_str();
     std::cout << "Requested " << path << std::endl;
     try {
         if (fs::client::exists(*thing, path)) {
@@ -120,12 +151,13 @@ handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost
             std::string length_field =
                 std::to_string(irods::experimental::filesystem::client::data_object_size(*thing, path));
             response.insert(boost::beast::http::field::content_length, length_field);
+            auto md5 = irods::experimental::filesystem::client::data_object_checksum(*thing, path);
+            response.insert("Content-MD5", md5);
             boost::beast::http::write_header(socket, serializer);
-
             boost::beast::error_code ec;
-
             irods::experimental::io::client::default_transport xtrans{*thing};
             irods::experimental::io::idstream d{xtrans, path};
+
             std::streampos current, size;
             while (d.good()) {
                 d.read(buffer_backing, 4096);
@@ -147,6 +179,8 @@ handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost
                         throw e;
                     }
                     else {
+                        // It would be nice if we could figure out something a bit more
+                        // semantic than catching an exception
                         std::cout << "Good error!" << std::endl;
                     }
                 }
@@ -157,7 +191,6 @@ handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost
             std::cout << "Wrote " << size << " bytes total" << std::endl;
         }
         else {
-            std::cout << "Trying to write no" << std::endl;
             boost::beast::http::response<boost::beast::http::empty_body> response;
             response.result(boost::beast::http::status::not_found);
             std::cerr << "Could not find file" << std::endl;
