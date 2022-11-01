@@ -10,4 +10,9 @@ namespace irods::s3
             p /= i;
         return p;
     }
+    std::string strip_bucket(const std::string& a)
+    {
+        return a;
+    }
+
 } //namespace irods::s3

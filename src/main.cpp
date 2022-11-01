@@ -3,6 +3,7 @@
 #include "./bucket.hpp"
 #include "boost/url/url.hpp"
 #include "boost/url/url_view.hpp"
+#include "./connection.hpp"
 
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -27,6 +28,9 @@
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/parser.hpp>
 #include <boost/beast/http/read.hpp>
+#include <boost/property_tree/detail/xml_parser_writer_settings.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
 
 #include <boost/stacktrace.hpp>
 
@@ -48,9 +52,15 @@
 #include <fstream>
 
 #include <fmt/chrono.h>
+#include <fmt/format.h>
 
+#include <irods/filesystem/collection_entry.hpp>
+#include <irods/filesystem/collection_iterator.hpp>
 #include <irods/filesystem/filesystem.hpp>
 #include <irods/filesystem/filesystem_error.hpp>
+#include <irods/filesystem/path.hpp>
+#include <irods/genQuery.h>
+#include <irods/msParam.h>
 #include <irods/rcConnect.h>
 #include <irods/rodsClient.h>
 #include <irods/client_connection.hpp>
@@ -59,9 +69,12 @@
 #include <irods/irods_parse_command_line_options.hpp>
 #include <irods/filesystem.hpp>
 #include <irods/rcMisc.h>
+#include <irods/rodsGenQuery.h>
 #include <irods/rodsPath.h>
 #include <irods/dstream.hpp>
 #include <irods/transport/default_transport.hpp>
+#include <irods/irods_query.hpp>
+#include <irods/query_builder.hpp>
 
 #include <memory>
 #include <type_traits>
@@ -74,36 +87,7 @@ namespace fs = irods::experimental::filesystem;
 using parser_type = boost::beast::http::parser<true, boost::beast::http::buffer_body>;
 
 bool authenticate(rcComm_t* connection, const std::string_view& username);
-struct rcComm_Deleter
-{
-    rcComm_Deleter() = default;
-    constexpr void operator()(rcComm_t* conn) const noexcept
-    {
-        if (conn == nullptr) {
-            return;
-        }
-        rcDisconnect(conn);
-    }
-};
-std::unique_ptr<rcComm_t, rcComm_Deleter> get_connection()
-{
-    rodsEnv env;
-    rErrMsg_t err;
-    getRodsEnv(&env);
-    std::unique_ptr<rcComm_t, rcComm_Deleter> result = nullptr;
-    // For some reason it isn't working with the assignment operator
-    result.reset(rcConnect(env.rodsHost, env.rodsPort, env.rodsUserName, env.rodsZone, 0, &err));
-    if (result == nullptr || err.status) {
-        std::cerr << err.msg << std::endl;
-        // Good old code 2143987421 (Manual not consulted due to draftiness, brrr)
-        // exit(2143987421);
-    }
-    if (const int ec = clientLogin(result.get())) {
-        std::cout << "Failed to log in" << std::endl;
-    }
 
-    return std::move(result);
-}
 std::string get_user_secret_key(rcComm_t* conn, const std::string_view& user)
 {
     return "heck";
@@ -123,7 +107,7 @@ get_user_signing_key(const std::string_view& secret_key, const std::string_view&
     return irods::s3::authentication::hmac_sha_256(date_region_service_key, "aws4_request");
 }
 
-bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls::url& url)
+bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls::url_view& url)
 {
     std::vector<std::string> auth_fields;
     // should be equal to something like
@@ -133,14 +117,48 @@ bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls
 }
 
 asio::awaitable<void>
+handle_listobjects_v2(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
+{
+    using namespace boost::property_tree;
+    auto thing = irods::s3::get_connection();
+    irods::experimental::filesystem::path resolved_path = irods::s3::resolve_bucket(url.segments()).c_str();
+    boost::property_tree::ptree document;
+    std::vector<std::string> args{std::string(resolved_path)};
+    const auto query = fmt::format(
+        "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}%'", resolved_path.c_str());
+    auto contents = document.add("ListBucketResult", "");
+    for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
+        ptree object;
+        object.put("Key", irods::s3::strip_bucket(i[1]));
+        object.put("Etag", i[1]);
+        object.put("Owner", i[2]);
+        object.put("Size", atoi(i[3].c_str()));
+        // add_child always creates a new node, put_child would replace the previous one.
+        document.add_child("ListBucketResult.Contents",object);
+    }
+    std::stringstream s;
+    boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
+    settings.indent_char = ' ';
+    settings.indent_count = 4;
+    boost::property_tree::write_xml(s, document, settings);
+    boost::beast::http::response<boost::beast::http::string_body> response;
+    response.body() = s.str();
+    std::cout << s.str();
+    std::cout << query << std::endl;
+    boost::beast::http::write(socket, response);
+    co_return;
+}
+
+asio::awaitable<void>
 handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
 {
-    auto thing = get_connection();
+    auto thing = irods::s3::get_connection();
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
 
     fs::path path = irods::s3::resolve_bucket(url.segments()).c_str();
     std::cout << "Requested " << path << std::endl;
+
     try {
         if (fs::client::exists(*thing, path)) {
             std::cout << "Trying to write file" << std::endl;
@@ -202,6 +220,8 @@ handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost
         std::cout << "error! " << e.what() << std::endl;
     }
 
+    boost::beast::http::response<boost::beast::http::dynamic_body> response;
+
     co_return;
 }
 
@@ -227,10 +247,17 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
     std::cout << segments << " " << segments.empty() << std::endl;
     switch (parser.get().method()) {
         case boost::beast::http::verb::get:
-            if (segments.empty() || params.contains("encoding-type=url") || params.contains("list-type=2")) {
+            if (segments.empty() || params.contains("encoding-type") || params.contains("list-type")) {
                 // Among other things, listobjects should be handled here.
-                if (params.contains("encoding-type=url")) {
-                    std::cout << "Listobjects detected" << std::endl;
+
+                // This is a weird little thing because the parameters are a multimap.
+                auto f = url.params().find("list-type");
+
+                // Honestly not being able to use -> here strikes me as a potential mistake that
+                // will be corrected in the future when boost::url is released properly as part
+                // of boost
+                if (f != url.params().end() && (*f).value == "2") {
+                    co_await handle_listobjects_v2(socket, parser, url);
                 }
             }
             else {
