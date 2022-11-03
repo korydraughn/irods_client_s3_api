@@ -18,6 +18,7 @@ namespace irods::s3::authentication
             data.length(),
             result,
             &result_size);
+            
         return std::string((char*) result, result_size);
     }
 } //namespace irods_s3_bridge::authentication

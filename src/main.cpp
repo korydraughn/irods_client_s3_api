@@ -5,8 +5,10 @@
 #include "boost/url/url_view.hpp"
 #include "./connection.hpp"
 
+#include <algorithm>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/trim.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio.hpp>
@@ -28,6 +30,7 @@
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/parser.hpp>
 #include <boost/beast/http/read.hpp>
+#include <boost/beast/http/status.hpp>
 #include <boost/property_tree/detail/xml_parser_writer_settings.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -77,7 +80,9 @@
 #include <irods/query_builder.hpp>
 
 #include <memory>
+#include <string_view>
 #include <type_traits>
+#include <unordered_set>
 
 namespace asio = boost::asio;
 namespace this_coro = boost::asio::this_coro;
@@ -91,6 +96,25 @@ bool authenticate(rcComm_t* connection, const std::string_view& username);
 std::string get_user_secret_key(rcComm_t* conn, const std::string_view& user)
 {
     return "heck";
+}
+
+std::string uri_encode(const std::string_view& sv)
+{
+    std::stringstream s;
+    std::ios state(nullptr);
+    state.copyfmt(s);
+    for (auto c : sv) {
+        bool encode =
+            (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || boost::is_any_of("-_~.")(c);
+        if (!encode) {
+            s << '%' << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << (int) c;
+            s.copyfmt(state);
+        }
+        else {
+            s << c;
+        }
+    }
+    return s.str();
 }
 
 std::string
@@ -107,45 +131,205 @@ get_user_signing_key(const std::string_view& secret_key, const std::string_view&
     return irods::s3::authentication::hmac_sha_256(date_region_service_key, "aws4_request");
 }
 
+// TODO when this is working, we can improve performance by reusing the same stringstream where possible.
+
+// Turn the url into the 'canon form'
+std::string canonicalize_url(const parser_type& request, const boost::urls::url_view& url)
+{
+    std::stringstream result;
+    result << request.get().at("Host");
+    for (auto i : url.segments()) {
+        result << '/' << uri_encode(i);
+    }
+    return result.str();
+}
+
+std::string canonicalize_request(
+    const parser_type& request,
+    const boost::urls::url_view& url,
+    const std::vector<std::string>& signed_headers)
+{
+    // At various points it wants various fields to be sorted.
+    // so reusing this can at least avoid some of the duplicate allocations and such
+    std::vector<std::string_view> sorted_fields;
+
+    std::stringstream result;
+
+    std::ios state(nullptr);
+    state.copyfmt(result);
+
+    result << std::uppercase << request.get().method_string() << '\n';
+    result.copyfmt(result); // restore former formatting
+    result << canonicalize_url(request, url) << '\n';
+    // Canonicalize query string
+    {
+        bool first = true;
+        for (const auto& param : url.encoded_params()) {
+            result << (first ? "" : "&") << uri_encode(param.key);
+            if (param.has_value) {
+                result << '=' << uri_encode(param.value);
+            }
+            first = false;
+        }
+    }
+    result << '\n';
+
+    for (const auto& header : request.get()) {
+        sorted_fields.emplace_back(header.name_string().data(), header.name_string().length());
+    }
+
+    // Produce the 'canonical headers'
+
+    std::sort(sorted_fields.begin(), sorted_fields.end());
+    for (const auto& field : sorted_fields) {
+        auto val = request.get().at(boost::string_view(field.data(), field.length())).to_string();
+        boost::trim(val);
+        result << std::nouppercase << field << ':';
+        result.copyfmt(state);
+        result << val << '\n';
+    }
+    result << "\n";
+
+    sorted_fields.clear();
+
+    // and the signed header list
+
+    for (const auto& hd : signed_headers) {
+        sorted_fields.push_back(hd);
+    }
+    std::sort(sorted_fields.begin(), sorted_fields.end());
+    {
+        bool first = true;
+        for (const auto& i : sorted_fields) {
+            result << (first ? "" : ";") << i;
+            first = false;
+        }
+        result.copyfmt(state);
+        result << '\n';
+    }
+
+    //and the payload signature
+
+    if (auto req = request.get().find("X-Amz-Content-SHA256"); req != request.get().end()) {
+        result << req->value();
+    }
+    else {
+        result << "UNSIGNED-PAYLOAD";
+    }
+
+    return result.str();
+}
+
 bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls::url_view& url)
 {
-    std::vector<std::string> auth_fields;
+    std::vector<std::string> auth_fields, credential_fields, signed_headers;
     // should be equal to something like
     // [ 'AWS4-SHA256-HMAC Credential=...', 'SignedHeaders=...', 'Signature=...']
     //
     boost::split(auth_fields, request.get().at("Authorization"), boost::is_any_of(","));
+
+    // Strip the names and such
+    for (auto& field : auth_fields) {
+        field = field.substr(field.find('=') + 1);
+    }
+
+    // Break up the credential field.
+    boost::split(credential_fields, auth_fields[0], boost::is_any_of("/"));
+
+    auto& access_key_id = credential_fields[0];
+    auto& date = credential_fields[1];
+    auto& region = credential_fields[2];
+    // Look, covering my bases here seems prudent.
+    auto& aws_service = credential_fields[3];
+
+    auto& signature = auth_fields[2];
+
+    boost::split(signed_headers, auth_fields[1], boost::is_any_of(";"));
+
+    auto canonical_request = canonicalize_request(request, url, signed_headers);
+    std::cout << "=========================" << std::endl;
+    std::cout << canonical_request << std::endl;
+    std::cout << "=========================" << std::endl;
+
+    auto signing_key = get_user_signing_key(get_user_secret_key(&conn, access_key_id), date, region);
+    return false;
 }
 
 asio::awaitable<void>
 handle_listobjects_v2(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
 {
     using namespace boost::property_tree;
+
     auto thing = irods::s3::get_connection();
     irods::experimental::filesystem::path resolved_path = irods::s3::resolve_bucket(url.segments()).c_str();
     boost::property_tree::ptree document;
-    std::vector<std::string> args{std::string(resolved_path)};
-    const auto query = fmt::format(
-        "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}%'", resolved_path.c_str());
+
+    std::string filename_prefix = "%";
+
+    if (const auto prefix = url.params().find("prefix"); prefix != url.params().end()) {
+        filename_prefix = (*prefix).value + "%";
+    }
+
+    std::string query = fmt::format(
+        "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}%' AND DATA_NAME like "
+        "'{}'",
+        resolved_path.c_str(),
+        filename_prefix,
+        resolved_path.c_str(),
+        filename_prefix);
+
+    std::cout << query << std::endl;
+
     auto contents = document.add("ListBucketResult", "");
+
+    bool found_objects = false;
+    std::unordered_set<std::string> seen_keys;
+
     for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
+        found_objects = true;
         ptree object;
+
         object.put("Key", irods::s3::strip_bucket(i[1]));
         object.put("Etag", i[1]);
         object.put("Owner", i[2]);
         object.put("Size", atoi(i[3].c_str()));
         // add_child always creates a new node, put_child would replace the previous one.
-        document.add_child("ListBucketResult.Contents",object);
+        document.add_child("ListBucketResult.Contents", object);
     }
-    std::stringstream s;
-    boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
-    settings.indent_char = ' ';
-    settings.indent_count = 4;
-    boost::property_tree::write_xml(s, document, settings);
-    boost::beast::http::response<boost::beast::http::string_body> response;
-    response.body() = s.str();
-    std::cout << s.str();
+
+    // Required for genquery limitations :p
+    query = fmt::format(
+        "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}/{}'",
+        resolved_path.c_str(),
+        filename_prefix);
     std::cout << query << std::endl;
-    boost::beast::http::write(socket, response);
+    for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
+        found_objects = true;
+        ptree object;
+        object.put("Key", irods::s3::strip_bucket(i[1]));
+        object.put("Etag", i[1]);
+        object.put("Owner", i[2]);
+        object.put("Size", atoi(i[3].c_str()));
+        document.add_child("ListBucketResult.Contents", object);
+    }
+
+    if (found_objects) {
+        std::stringstream s;
+        boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
+        settings.indent_char = ' ';
+        settings.indent_count = 4;
+        boost::property_tree::write_xml(s, document, settings);
+        boost::beast::http::response<boost::beast::http::string_body> response;
+        response.body() = s.str();
+        std::cout << s.str();
+
+        boost::beast::http::write(socket, response);
+    }
+    else {
+        boost::beast::http::response<boost::beast::http::empty_body> response;
+        response.result(boost::beast::http::status::not_found);
+        boost::beast::http::write(socket, response);
+    }
     co_return;
 }
 
@@ -156,6 +340,7 @@ handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
 
+    authenticates(*thing, parser, url);
     fs::path path = irods::s3::resolve_bucket(url.segments()).c_str();
     std::cout << "Requested " << path << std::endl;
 
