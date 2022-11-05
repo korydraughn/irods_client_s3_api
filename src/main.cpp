@@ -50,6 +50,7 @@
 #include <chrono>
 #include <experimental/coroutine>
 #include <filesystem>
+#include <iomanip>
 #include <ios>
 #include <iostream>
 #include <fstream>
@@ -139,7 +140,7 @@ std::string canonicalize_url(const parser_type& request, const boost::urls::url_
     std::stringstream result;
     result << request.get().at("Host");
     for (auto i : url.segments()) {
-        result << '/' << uri_encode(i);
+        result << '/' << uri_encode(i); // :shrug:
     }
     return result.str();
 }
@@ -220,6 +221,23 @@ std::string canonicalize_request(
     return result.str();
 }
 
+std::string string_to_sign(
+    const parser_type& request,
+    const boost::urls::url_view& url,
+    const std::string_view& date,
+    const std::string_view& region,
+    const std::string_view& canonical_request)
+{
+    std::stringstream result;
+    result << "AWS4-HMAC-SHA256\n";
+    result << request.get().at("X-Amz-Date") << '\n';
+    result << date << '/' << region << "/s3/aws4_request\n";
+    for (auto i : irods::s3::authentication::hash_sha_256(canonical_request)) {
+        result << std::hex << std::setw(2) << std::setfill('0') << (unsigned short) i;
+    }
+    return result.str();
+}
+
 bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls::url_view& url)
 {
     std::vector<std::string> auth_fields, credential_fields, signed_headers;
@@ -251,8 +269,20 @@ bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls
     std::cout << canonical_request << std::endl;
     std::cout << "=========================" << std::endl;
 
+    auto sts = string_to_sign(request, url, date, region, canonical_request);
+
+    std::cout << sts << std::endl;
+    std::cout << "=========================" << std::endl;
+
     auto signing_key = get_user_signing_key(get_user_secret_key(&conn, access_key_id), date, region);
-    return false;
+    auto computed_signature = irods::s3::authentication::hmac_sha_256(signing_key, sts);
+
+    std::cout << "Computed: " << std::hex;
+    for (auto i : computed_signature)
+        std::cout << std::setfill('0') << std::setw(2) << (int) i;
+    std::cout << "\nActual Signature:" << signature << std::endl;
+
+    return computed_signature == signature;
 }
 
 asio::awaitable<void>
@@ -261,6 +291,9 @@ handle_listobjects_v2(asio::ip::tcp::socket& socket, parser_type& parser, const 
     using namespace boost::property_tree;
 
     auto thing = irods::s3::get_connection();
+
+    authenticates(*thing, parser, url);
+
     irods::experimental::filesystem::path resolved_path = irods::s3::resolve_bucket(url.segments()).c_str();
     boost::property_tree::ptree document;
 
