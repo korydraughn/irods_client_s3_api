@@ -7,4 +7,5 @@ namespace irods::s3::authentication
 {
     std::string hmac_sha_256(const std::string_view& key, const std::string_view& data);
     std::string hash_sha_256(const std::string_view& data);
+    std::string hex_encode(const std::string_view &data);
 } //namespace irods_s3_bridge::authentication

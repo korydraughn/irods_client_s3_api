@@ -1,9 +1,12 @@
+#include "./authentication.hpp"
 #include "./event_loop.hpp"
 #include "./hmac.hpp"
 #include "./bucket.hpp"
+#include "boost/url/param.hpp"
 #include "boost/url/url.hpp"
 #include "boost/url/url_view.hpp"
 #include "./connection.hpp"
+#include "./types.hpp"
 
 #include <algorithm>
 #include <boost/algorithm/string/classification.hpp>
@@ -48,6 +51,7 @@
 #include <boost/url/src.hpp>
 
 #include <chrono>
+#include <ctype.h>
 #include <experimental/coroutine>
 #include <filesystem>
 #include <iomanip>
@@ -90,209 +94,23 @@ namespace this_coro = boost::asio::this_coro;
 namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 
-using parser_type = boost::beast::http::parser<true, boost::beast::http::buffer_body>;
 
-bool authenticate(rcComm_t* connection, const std::string_view& username);
 
-std::string get_user_secret_key(rcComm_t* conn, const std::string_view& user)
-{
-    return "heck";
-}
-
-std::string uri_encode(const std::string_view& sv)
-{
-    std::stringstream s;
-    std::ios state(nullptr);
-    state.copyfmt(s);
-    for (auto c : sv) {
-        bool encode =
-            (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || boost::is_any_of("-_~.")(c);
-        if (!encode) {
-            s << '%' << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << (int) c;
-            s.copyfmt(state);
-        }
-        else {
-            s << c;
-        }
-    }
-    return s.str();
-}
-
-std::string
-get_user_signing_key(const std::string_view& secret_key, const std::string_view& date, const std::string_view& region)
-{
-    // Hate it when amazon gives me homework
-    // during implementation of their protocol
-    std::cout << "date time component is " << date << std::endl;
-    auto date_key = irods::s3::authentication::hmac_sha_256(std::string("AWS4").append(secret_key), date);
-    auto date_region_key = irods::s3::authentication::hmac_sha_256(date_key, region);
-    // 'date region service key'
-    // :eyeroll:
-    auto date_region_service_key = irods::s3::authentication::hmac_sha_256(date_region_key, "s3");
-    return irods::s3::authentication::hmac_sha_256(date_region_service_key, "aws4_request");
-}
-
-// TODO when this is working, we can improve performance by reusing the same stringstream where possible.
-
-// Turn the url into the 'canon form'
-std::string canonicalize_url(const parser_type& request, const boost::urls::url_view& url)
-{
-    std::stringstream result;
-    result << request.get().at("Host");
-    for (auto i : url.segments()) {
-        result << '/' << uri_encode(i); // :shrug:
-    }
-    return result.str();
-}
-
-std::string canonicalize_request(
-    const parser_type& request,
-    const boost::urls::url_view& url,
-    const std::vector<std::string>& signed_headers)
-{
-    // At various points it wants various fields to be sorted.
-    // so reusing this can at least avoid some of the duplicate allocations and such
-    std::vector<std::string_view> sorted_fields;
-
-    std::stringstream result;
-
-    std::ios state(nullptr);
-    state.copyfmt(result);
-
-    result << std::uppercase << request.get().method_string() << '\n';
-    result.copyfmt(result); // restore former formatting
-    result << canonicalize_url(request, url) << '\n';
-    // Canonicalize query string
-    {
-        bool first = true;
-        for (const auto& param : url.encoded_params()) {
-            result << (first ? "" : "&") << uri_encode(param.key);
-            if (param.has_value) {
-                result << '=' << uri_encode(param.value);
-            }
-            first = false;
-        }
-    }
-    result << '\n';
-
-    for (const auto& header : request.get()) {
-        sorted_fields.emplace_back(header.name_string().data(), header.name_string().length());
-    }
-
-    // Produce the 'canonical headers'
-
-    std::sort(sorted_fields.begin(), sorted_fields.end());
-    for (const auto& field : sorted_fields) {
-        auto val = request.get().at(boost::string_view(field.data(), field.length())).to_string();
-        boost::trim(val);
-        result << std::nouppercase << field << ':';
-        result.copyfmt(state);
-        result << val << '\n';
-    }
-    result << "\n";
-
-    sorted_fields.clear();
-
-    // and the signed header list
-
-    for (const auto& hd : signed_headers) {
-        sorted_fields.push_back(hd);
-    }
-    std::sort(sorted_fields.begin(), sorted_fields.end());
-    {
-        bool first = true;
-        for (const auto& i : sorted_fields) {
-            result << (first ? "" : ";") << i;
-            first = false;
-        }
-        result.copyfmt(state);
-        result << '\n';
-    }
-
-    //and the payload signature
-
-    if (auto req = request.get().find("X-Amz-Content-SHA256"); req != request.get().end()) {
-        result << req->value();
-    }
-    else {
-        result << "UNSIGNED-PAYLOAD";
-    }
-
-    return result.str();
-}
-
-std::string string_to_sign(
-    const parser_type& request,
-    const boost::urls::url_view& url,
-    const std::string_view& date,
-    const std::string_view& region,
-    const std::string_view& canonical_request)
-{
-    std::stringstream result;
-    result << "AWS4-HMAC-SHA256\n";
-    result << request.get().at("X-Amz-Date") << '\n';
-    result << date << '/' << region << "/s3/aws4_request\n";
-    for (auto i : irods::s3::authentication::hash_sha_256(canonical_request)) {
-        result << std::hex << std::setw(2) << std::setfill('0') << (unsigned short) i;
-    }
-    return result.str();
-}
-
-bool authenticates(rcComm_t& conn, const parser_type& request, const boost::urls::url_view& url)
-{
-    std::vector<std::string> auth_fields, credential_fields, signed_headers;
-    // should be equal to something like
-    // [ 'AWS4-SHA256-HMAC Credential=...', 'SignedHeaders=...', 'Signature=...']
-    //
-    boost::split(auth_fields, request.get().at("Authorization"), boost::is_any_of(","));
-
-    // Strip the names and such
-    for (auto& field : auth_fields) {
-        field = field.substr(field.find('=') + 1);
-    }
-
-    // Break up the credential field.
-    boost::split(credential_fields, auth_fields[0], boost::is_any_of("/"));
-
-    auto& access_key_id = credential_fields[0];
-    auto& date = credential_fields[1];
-    auto& region = credential_fields[2];
-    // Look, covering my bases here seems prudent.
-    auto& aws_service = credential_fields[3];
-
-    auto& signature = auth_fields[2];
-
-    boost::split(signed_headers, auth_fields[1], boost::is_any_of(";"));
-
-    auto canonical_request = canonicalize_request(request, url, signed_headers);
-    std::cout << "=========================" << std::endl;
-    std::cout << canonical_request << std::endl;
-    std::cout << "=========================" << std::endl;
-
-    auto sts = string_to_sign(request, url, date, region, canonical_request);
-
-    std::cout << sts << std::endl;
-    std::cout << "=========================" << std::endl;
-
-    auto signing_key = get_user_signing_key(get_user_secret_key(&conn, access_key_id), date, region);
-    auto computed_signature = irods::s3::authentication::hmac_sha_256(signing_key, sts);
-
-    std::cout << "Computed: " << std::hex;
-    for (auto i : computed_signature)
-        std::cout << std::setfill('0') << std::setw(2) << (int) i;
-    std::cout << "\nActual Signature:" << signature << std::endl;
-
-    return computed_signature == signature;
-}
-
-asio::awaitable<void>
-handle_listobjects_v2(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
+asio::awaitable<void> handle_listobjects_v2(
+    asio::ip::tcp::socket& socket,
+    static_buffer_request_parser& parser,
+    const boost::urls::url_view& url)
 {
     using namespace boost::property_tree;
 
     auto thing = irods::s3::get_connection();
 
-    authenticates(*thing, parser, url);
+    if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
+        boost::beast::http::response<boost::beast::http::empty_body> response;
+        response.result(boost::beast::http::status::forbidden);
+        boost::beast::http::write(socket, response);
+        co_return;
+    }
 
     irods::experimental::filesystem::path resolved_path = irods::s3::resolve_bucket(url.segments()).c_str();
     boost::property_tree::ptree document;
@@ -367,13 +185,12 @@ handle_listobjects_v2(asio::ip::tcp::socket& socket, parser_type& parser, const 
 }
 
 asio::awaitable<void>
-handle_getobject(asio::ip::tcp::socket& socket, parser_type& parser, const boost::urls::url_view& url)
+handle_getobject(asio::ip::tcp::socket& socket, static_buffer_request_parser& parser, const boost::urls::url_view& url)
 {
     auto thing = irods::s3::get_connection();
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
 
-    authenticates(*thing, parser, url);
     fs::path path = irods::s3::resolve_bucket(url.segments()).c_str();
     std::cout << "Requested " << path << std::endl;
 
@@ -459,7 +276,19 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
         std::cout << "header: " << field.name_string() << ":" << field.value() << std::endl;
     }
     std::cout << "target: " << parser.get().target() << std::endl;
-    auto url = boost::urls::url_view(parser.get().base().target());
+    std::string url_string = parser.get().find("Host")->value().to_string() + parser.get().target().to_string();
+    std::cout << "candidate url string is [" << url_string << "]\n";
+    boost::urls::url url2;
+    auto host = parser.get().find("Host")->value();
+    url2.set_encoded_host(host.find(':') != std::string::npos ? host.substr(0, host.find(':')) : host);
+    url2.set_path(parser.get().target().substr(0, parser.get().target().find("?")));
+    url2.set_scheme("http");
+    if (parser.get().target().find('?') != std::string::npos) {
+        url2.set_query(parser.get().target().substr(parser.get().target().find("?") + 1));
+    }
+
+    boost::urls::url_view url = url2;
+    std::cout << "Url " << url2 << std::endl;
     const auto& segments = url.segments();
     const auto& params = url.params();
     std::cout << segments << " " << segments.empty() << std::endl;
