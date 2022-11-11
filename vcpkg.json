@@ -3,7 +3,10 @@
     "version":"0.0.0",
     "dependencies":[
         "fmt",
-        "boost",
+        "boost-system",
+        "boost-asio",
+        "boost-beast",
+        "boost-algorithm",
         "nlohmann-json",
         "openssl"
     ]

@@ -21,7 +21,7 @@ target_link_libraries(irods_s3_bridge PRIVATE
   fmt::fmt-header-only 
   irods_client irods_plugin_dependencies 
   irods_common irods_server  
-  hmac_sha256)
+  hmac_sha256 ${CMAKE_DL_LIBS})
 target_include_directories(irods_s3_bridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third-party/url/include third-party/hmac_sha256)
 set_property(TARGET irods_s3_bridge PROPERTY CXX_STANDARD 20)
 add_subdirectory(src)
