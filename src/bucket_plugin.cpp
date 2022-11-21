@@ -1,21 +1,30 @@
 #include "./bucket_plugin.h"
+#include "./bucket.hpp"
+
 #include <unordered_map>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <boost/url.hpp>
+
+#include <irods/irods_exception.hpp>
+#include <irods/filesystem.hpp>
+
+namespace fs = irods::experimental::filesystem;
+
 namespace
 {
     struct bucket_plugin
     {
-        bucket_creation_function create;
-        bucket_resolution_function resolve;
-        bucket_reversal_function reverse;
-        bucket_deletion_function delete_fn;
-        bucket_list_function list_fn;
+        bucket_creation_function create = nullptr;
+        bucket_resolution_function resolve = nullptr;
+        bucket_reversal_function reverse = nullptr;
+        bucket_deletion_function delete_fn = nullptr;
+        bucket_list_function list_fn = nullptr;
     };
 
-    std::vector<bucket_plugin> bucket_plugins;
+    bucket_plugin active_bucket_plugin;
 
 } //namespace
 
@@ -26,40 +35,74 @@ extern "C" void add_bucket_plugin(
     bucket_deletion_function deletion_f,
     bucket_list_function list_f)
 {
-    bucket_plugins.emplace_back(bucket_plugin{creation_f, resolution_f, reversal_f, deletion_f, list_f});
+    active_bucket_plugin = bucket_plugin{creation_f, resolution_f, reversal_f, deletion_f, list_f};
 }
 
 int create_bucket(rcComm_t* connection, const char* name)
 {
-    for (const auto& plugin : bucket_plugins) {
-        if (plugin.create) {
-            return plugin.create(connection, name);
-        }
+    if (active_bucket_plugin.create) {
+        return active_bucket_plugin.create(connection, name);
     }
     return -1;
 }
 
 int delete_bucket(rcComm_t* connection, const char* name)
 {
-    for (const auto& plugin : bucket_plugins) {
-        if (plugin.delete_fn) {
-            return plugin.delete_fn(connection, name);
-        }
+    if (active_bucket_plugin.delete_fn) {
+        return active_bucket_plugin.delete_fn(connection, name);
     }
     return -1;
 }
-std::vector<std::string> list_buckets(rcComm_t* connection, char*** output)
+
+std::vector<std::string> list_buckets(rcComm_t* connection, const char* username, char*** output)
 {
     std::vector<std::string> buckets;
-    for (const auto& plugin : bucket_plugins) {
-        if (plugin.list_fn) {
-            char** current;
-            plugin.list_fn(connection, &current);
-            for (int i = 0; current[i] != nullptr; i++)
-                buckets.push_back(current[i]);
-        }
-    }
-    // Concatenate and turn into strings.
 
+    if (active_bucket_plugin.list_fn) {
+        char** items;
+        auto result = active_bucket_plugin.list_fn(connection, username, &items);
+        if (result != 0) {
+            throw irods::exception(result, "Error in list_buckets", __FILE__, __LINE__, __FUNCTION__);
+        }
+        for (int i = 0; items[i] != nullptr; i++) {
+            buckets.emplace_back(items[i]);
+            free(items[i]); // This might not be enough to work for every purpose.
+            // It might be necessary to provide a destructor if delete is incompatible with it. :p
+        }
+        free(items);
+    }
     return buckets;
 }
+
+/// Produces the basic irods path of the bucket. This will need concatenation with the remainder of the key.
+fs::path irods::s3::resolve_bucket(rcComm_t& connection, const boost::urls::segments_view& view)
+{
+    char buffer[300];
+    size_t pathlen;
+    int result = active_bucket_plugin.resolve(&connection, (*view.begin()).c_str(), buffer, &pathlen);
+    if (result != 0) {
+    }
+    fs::path bucket_path(buffer, buffer + pathlen);
+    // for(auto i = ++view.begin();i!=view.end();i++){
+    //     bucket_path /= (*i).c_str();
+    // }
+    return bucket_path;
+}
+
+fs::path irods::s3::finish_path(const fs::path& base, const boost::urls::segments_view& view)
+{
+    auto result = base;
+    for(auto i = ++view.begin();i!=view.end();i++){
+        result/= (*i).c_str();
+    }
+    return result;
+}
+
+// std::filesystem::path resolve_bucket(const boost::urls::segments_view& view)
+// {
+//     std::filesystem::path p;
+//     p = "/tempZone/home/rods";
+//     for (const auto& i : view)
+//         p /= i;
+//     return p;
+// }

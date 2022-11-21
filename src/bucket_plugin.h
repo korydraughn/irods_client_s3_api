@@ -18,6 +18,8 @@ extern "C" {
 ///
 typedef bool (*bucket_resolution_function)(rcComm_t* connection, const char* bucket, char* output, size_t* length);
 
+// TODO remove the bucket_reversal_function when possible, it should *not* be necessary
+
 /// Takes 5 arguments, the connection to irods, the path, the output buffer, and the location to
 /// place the output buffer.
 ///
@@ -39,23 +41,31 @@ typedef int (*bucket_deletion_function)(rcComm_t* connection, const char* bucket
 
 /// To be called when the user wants to obtain a list of buckets.
 ///
-/// Takes two arguments, the connection, and a pointer to a char** which will be written to
-/// which will be null terminated.
-typedef int (*bucket_list_function)(rcComm_t* connection, char*** output_buffer);
-
-/// To be called on s3_bridge_load
+/// Takes three arguments, the connection, and a pointer to a char** which will be
+/// written to, the owning user's irod username, and an output pointer to a nullptr terminated
+/// list of char*s
 ///
-/// @param resolution_f The bucket resolution function. This is the core of the plugin.
-/// @param reversal_f The bucket reversal function or the null pointer
-/// @param creation_f The bucket creation function or the null pointer
-/// @param deletion_f The bucket deletion function or the null pointer
-/// @param list_f The bucket list function or the null pointer
-void add_bucket_plugin(
-    bucket_resolution_function resolution_f,
-    bucket_reversal_function reversal_f,
-    bucket_creation_function creation_f,
-    bucket_deletion_function deletion_f,
-    bucket_list_function list_f);
+/// \remark A function that implements this should take care that memory allocations for the output
+/// buffer are from an allocator compatible with free(1)
+typedef int (*bucket_list_function)(rcComm_t* connection, const char* username, char*** output_buffer);
+
+#ifdef BRIDGE_PLUGIN
+extern
+#endif
+    /// To be called on s3_bridge_load
+    ///
+    /// @param resolution_f The bucket resolution function. This is the core of the plugin.
+    /// @param reversal_f The bucket reversal function or the null pointer
+    /// @param creation_f The bucket creation function or the null pointer
+    /// @param deletion_f The bucket deletion function or the null pointer
+    /// @param list_f The bucket list function or the null pointer
+    void
+    add_bucket_plugin(
+        bucket_resolution_function resolution_f,
+        bucket_reversal_function reversal_f,
+        bucket_creation_function creation_f,
+        bucket_deletion_function deletion_f,
+        bucket_list_function list_f);
 
 #ifdef __cplusplus
 }

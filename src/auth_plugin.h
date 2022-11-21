@@ -12,7 +12,7 @@ extern "C" {
 /// @param connection The irods server connection
 /// @param username The username to get the secret key of.
 /// @param access_key The output buffer for the secret key.
-/// @returns true on being able to retrieve the password, false otherwise
+/// @returns true on being able to retrieve the secret key, false otherwise
 typedef bool (*secret_key_fn)(rcComm_t* connection, const char* username, char* access_key);
 
 /// A function type for mapping s3 users to iRODS users.
@@ -56,9 +56,13 @@ typedef bool (
 /// @returns true when the user exists.
 typedef bool (*user_exists_fn)(rcComm_t* connection, const char* username);
 
+#ifdef BRIDGE_PLUGIN
+extern
+#endif
 /// Add an authentication plugin to the back of the authentication plugin list.
 /// @param secret_key_function A function to resolve the secret key. Required to not be nullptr
-/// @param username_resolver A function to resolve the irods username from an s3 username. Required to not be a nullptr
+/// @param username_resolver A function to resolve the irods username from an s3 username. Required to not be a
+/// nullptr
 /// @param reset_user_function A function to reset a user's secret key, optional
 /// @param create_user_function A function to create a user, optional.
 /// @param delete_user_function A function to delete a user, optional

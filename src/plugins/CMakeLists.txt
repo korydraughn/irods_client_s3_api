@@ -1,0 +1,2 @@
+add_subdirectory(static_bucket_resolver)
+add_subdirectory(static_authentication_resolver)

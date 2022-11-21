@@ -7,6 +7,7 @@
 #include "boost/url/url_view.hpp"
 #include "./connection.hpp"
 #include "./types.hpp"
+#include "plugin.hpp"
 
 #include <algorithm>
 #include <boost/algorithm/string/classification.hpp>
@@ -94,8 +95,6 @@ namespace this_coro = boost::asio::this_coro;
 namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 
-
-
 asio::awaitable<void> handle_listobjects_v2(
     asio::ip::tcp::socket& socket,
     static_buffer_request_parser& parser,
@@ -112,7 +111,9 @@ asio::awaitable<void> handle_listobjects_v2(
         co_return;
     }
 
-    irods::experimental::filesystem::path resolved_path = irods::s3::resolve_bucket(url.segments()).c_str();
+    irods::experimental::filesystem::path resolved_path = irods::s3::resolve_bucket(*thing, url.segments()).c_str();
+    auto base_length = resolved_path.string().size();
+    resolved_path = irods::s3::finish_path(resolved_path, url.segments());
     boost::property_tree::ptree document;
 
     std::string filename_prefix = "%";
@@ -126,7 +127,7 @@ asio::awaitable<void> handle_listobjects_v2(
         "'{}'",
         resolved_path.c_str(),
         filename_prefix,
-        resolved_path.c_str(),
+        resolved_path.string().substr(0, resolved_path.string().length() - 1),
         filename_prefix);
 
     std::cout << query << std::endl;
@@ -139,8 +140,7 @@ asio::awaitable<void> handle_listobjects_v2(
     for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
         found_objects = true;
         ptree object;
-
-        object.put("Key", irods::s3::strip_bucket(i[1]));
+        object.put("Key", i[1].substr(base_length));
         object.put("Etag", i[1]);
         object.put("Owner", i[2]);
         object.put("Size", atoi(i[3].c_str()));
@@ -151,13 +151,13 @@ asio::awaitable<void> handle_listobjects_v2(
     // Required for genquery limitations :p
     query = fmt::format(
         "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}/{}'",
-        resolved_path.c_str(),
+        resolved_path.string().substr(0, resolved_path.string().length() - 1),
         filename_prefix);
     std::cout << query << std::endl;
     for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
         found_objects = true;
         ptree object;
-        object.put("Key", irods::s3::strip_bucket(i[1]));
+        object.put("Key", i[0].substr(base_length)+"/"+i[1]);
         object.put("Etag", i[1]);
         object.put("Owner", i[2]);
         object.put("Size", atoi(i[3].c_str()));
@@ -169,6 +169,7 @@ asio::awaitable<void> handle_listobjects_v2(
         boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
         settings.indent_char = ' ';
         settings.indent_count = 4;
+        std::cout << "Found objects" << std::endl;
         boost::property_tree::write_xml(s, document, settings);
         boost::beast::http::response<boost::beast::http::string_body> response;
         response.body() = s.str();
@@ -177,6 +178,7 @@ asio::awaitable<void> handle_listobjects_v2(
         boost::beast::http::write(socket, response);
     }
     else {
+        std::cout << "Couldn't find anything" << std::endl;
         boost::beast::http::response<boost::beast::http::empty_body> response;
         response.result(boost::beast::http::status::not_found);
         boost::beast::http::write(socket, response);
@@ -191,7 +193,8 @@ handle_getobject(asio::ip::tcp::socket& socket, static_buffer_request_parser& pa
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
 
-    fs::path path = irods::s3::resolve_bucket(url.segments()).c_str();
+    fs::path path = irods::s3::resolve_bucket(*thing, url.segments()).c_str();
+    path = irods::s3::finish_path(path, url.segments());
     std::cout << "Requested " << path << std::endl;
 
     try {
@@ -380,6 +383,12 @@ int main()
     irods::api_entry_table& api_tbl = irods::get_client_api_table();
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
+    {
+        using namespace nlohmann::literals;
+        auto config = R"({"name":"static_bucket_resolver", "mappings": {"wow": "/tempZone/home/rods/wow/"}})"_json;
+        auto i = irods::s3::get_connection();
+        irods::s3::plugins::load_plugin(*i, "static_bucket_resolver", config);
+    }
 
     asio::io_context io_context(1);
     auto address = asio::ip::make_address("0.0.0.0");
