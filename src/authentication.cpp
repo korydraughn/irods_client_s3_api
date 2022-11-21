@@ -6,10 +6,7 @@
 #include <boost/algorithm/string.hpp>
 namespace
 {
-    std::string get_user_secret_key(rcComm_t* conn, const std::string_view& user)
-    {
-        return "heck";
-    }
+
 
     std::string uri_encode(const std::string_view& sv)
     {
@@ -207,7 +204,7 @@ bool irods::s3::authentication::authenticates(
     std::cout << sts << std::endl;
     std::cout << "=========================" << std::endl;
 
-    auto signing_key = get_user_signing_key(get_user_secret_key(&conn, access_key_id), date, region);
+    auto signing_key = get_user_signing_key(irods::s3::authentication::get_user_secret_key(&conn, access_key_id).value(), date, region);
     auto computed_signature = hex_encode(hmac_sha_256(signing_key, sts));
 
     std::cout << "Computed: [" << computed_signature << "]";

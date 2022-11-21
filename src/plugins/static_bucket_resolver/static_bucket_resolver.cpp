@@ -1,12 +1,16 @@
+#include <algorithm>
 #include <irods/filesystem/collection_iterator.hpp>
 #include <irods/filesystem/filesystem.hpp>
 #include <irods/filesystem/permissions.hpp>
+#include <irods/user_administration.hpp>
+
 #define BRIDGE_PLUGIN
 #include "bucket_plugin.h"
 
 #include <irods/rcConnect.h>
 #include <irods/filesystem.hpp>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <string_view>
 #include <nlohmann/json.hpp>
@@ -32,12 +36,27 @@ namespace
     int list_buckets(rcComm_t* connection, const char* username, char*** output)
     {
         std::vector<std::string_view> matched;
+        auto user = irods::experimental::administration::user(username, connection->clientUser.rodsZone);
+        std::unordered_set<std::string> groups;
+
+        {
+            auto user_groups = irods::experimental::administration::client::groups(*connection, user);
+            std::transform(
+                user_groups.begin(), user_groups.end(), std::inserter(groups, groups.end()), [](const auto& i) {
+                    return i.name;
+                });
+        }
         for (const auto& [_key, value] : buckets) {
             irods::experimental::filesystem::perms perm;
 
             auto status = irods::experimental::filesystem::client::status(*connection, value);
             for (const auto& p : status.permissions()) {
-                if (p.name == username && p.prms == irods::experimental::filesystem::perms::own) {
+                if (p.zone != user.zone) {
+                    continue;
+                }
+                // This needs to handle groups.
+                if (p.name == username && p.prms == irods::experimental::filesystem::perms::own)
+                {
                     matched.push_back(_key);
                     break;
                 }

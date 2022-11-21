@@ -1,6 +1,7 @@
 #include "./auth_plugin.h"
 #include <vector>
 #include <string>
+#include "authentication.hpp"
 
 namespace
 {
@@ -33,12 +34,12 @@ void add_authentication_plugin(
         user_exists};
 }
 
-bool delete_user(rcComm_t& connection, const std::string_view& username)
+bool irods::s3::authentication::delete_user(rcComm_t& connection, const std::string_view& username)
 {
     return active_authentication_plugin.delete_user(&connection, username.data());
 }
 
-bool user_exists(rcComm_t& connection, const std::string_view& username)
+bool irods::s3::authentication::user_exists(rcComm_t& connection, const std::string_view& username)
 {
     if (active_authentication_plugin.user_exists) {
         active_authentication_plugin.user_exists(&connection, username.data());
@@ -51,7 +52,11 @@ bool user_exists(rcComm_t& connection, const std::string_view& username)
     }
     return false;
 }
-bool create_user(rcComm_t& connection, const std::string_view& username, const std::string_view& secret_key)
+
+bool irods::s3::authentication::create_user(
+    rcComm_t& connection,
+    const std::string_view& username,
+    const std::string_view& secret_key)
 {
     if (user_exists(connection, username)) {
         return false;
@@ -61,4 +66,15 @@ bool create_user(rcComm_t& connection, const std::string_view& username, const s
             &connection, username.data(), secret_key.data(), secret_key.length());
     }
     return false;
+}
+std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm_t* conn, const std::string_view& user)
+{
+    char secret_key[512], username[120];
+    if (!active_authentication_plugin.get_iRODS_user(conn, user.data(), username)) {
+        return std::nullopt;
+    }
+    if (!active_authentication_plugin.secret_key(conn, user.data(), secret_key)) {
+        return std::nullopt;
+    }
+    return std::string(secret_key);
 }

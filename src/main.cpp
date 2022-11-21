@@ -380,14 +380,19 @@ asio::awaitable<void> listener()
 }
 int main()
 {
+    using namespace nlohmann::literals;
     irods::api_entry_table& api_tbl = irods::get_client_api_table();
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
     {
-        using namespace nlohmann::literals;
+        
         auto config = R"({"name":"static_bucket_resolver", "mappings": {"wow": "/tempZone/home/rods/wow/"}})"_json;
         auto i = irods::s3::get_connection();
         irods::s3::plugins::load_plugin(*i, "static_bucket_resolver", config);
+    }{
+        auto config = R"({"name":"static_authentication_resolver", "users": {"no": {"username":"rods","secret_key":"heck"}}})"_json;
+        auto i = irods::s3::get_connection();
+        irods::s3::plugins::load_plugin(*i, "static_authentication_resolver", config);
     }
 
     asio::io_context io_context(1);
