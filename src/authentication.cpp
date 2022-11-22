@@ -4,6 +4,8 @@
 #include <iomanip>
 #include <sstream>
 #include <boost/algorithm/string.hpp>
+#include <irods/switch_user.h>
+
 namespace
 {
 
@@ -204,8 +206,11 @@ bool irods::s3::authentication::authenticates(
     std::cout << sts << std::endl;
     std::cout << "=========================" << std::endl;
 
+    auto irods_user = irods::s3::authentication::get_iRODS_user(&conn,access_key_id).value();
     auto signing_key = get_user_signing_key(irods::s3::authentication::get_user_secret_key(&conn, access_key_id).value(), date, region);
     auto computed_signature = hex_encode(hmac_sha_256(signing_key, sts));
+
+    rc_switch_user(&conn, irods_user.c_str(), conn.clientUser.rodsZone);
 
     std::cout << "Computed: [" << computed_signature << "]";
 

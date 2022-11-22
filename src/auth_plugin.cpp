@@ -1,4 +1,5 @@
 #include "./auth_plugin.h"
+#include <optional>
 #include <vector>
 #include <string>
 #include "authentication.hpp"
@@ -67,12 +68,18 @@ bool irods::s3::authentication::create_user(
     }
     return false;
 }
-std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm_t* conn, const std::string_view& user)
+std::optional<std::string> irods::s3::authentication::get_iRODS_user(rcComm_t* conn, const std::string_view& user)
 {
-    char secret_key[512], username[120];
+    char username[120];
     if (!active_authentication_plugin.get_iRODS_user(conn, user.data(), username)) {
         return std::nullopt;
     }
+    return std::string(username);
+}
+
+std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm_t* conn, const std::string_view& user)
+{
+    char secret_key[512];
     if (!active_authentication_plugin.secret_key(conn, user.data(), secret_key)) {
         return std::nullopt;
     }
