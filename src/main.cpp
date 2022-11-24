@@ -8,6 +8,7 @@
 #include "./connection.hpp"
 #include "./types.hpp"
 #include "plugin.hpp"
+#include "s3/s3_api.hpp"
 
 #include <algorithm>
 #include <boost/algorithm/string/classification.hpp>
@@ -95,173 +96,193 @@ namespace this_coro = boost::asio::this_coro;
 namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 
-asio::awaitable<void> handle_listobjects_v2(
-    asio::ip::tcp::socket& socket,
-    static_buffer_request_parser& parser,
-    const boost::urls::url_view& url)
-{
-    using namespace boost::property_tree;
+// asio::awaitable<void> handle_listobjects_v2(
+//     asio::ip::tcp::socket& socket,
+//     static_buffer_request_parser& parser,
+//     const boost::urls::url_view& url)
+// {
+//     using namespace boost::property_tree;
 
-    auto thing = irods::s3::get_connection();
+//     auto thing = irods::s3::get_connection();
 
-    if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
-        boost::beast::http::response<boost::beast::http::empty_body> response;
-        response.result(boost::beast::http::status::forbidden);
-        boost::beast::http::write(socket, response);
-        co_return;
-    }
+//     if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
+//         boost::beast::http::response<boost::beast::http::empty_body> response;
+//         response.result(boost::beast::http::status::forbidden);
+//         boost::beast::http::write(socket, response);
+//         co_return;
+//     }
 
-    irods::experimental::filesystem::path resolved_path = irods::s3::resolve_bucket(*thing, url.segments()).c_str();
-    auto base_length = resolved_path.string().size();
-    resolved_path = irods::s3::finish_path(resolved_path, url.segments());
-    boost::property_tree::ptree document;
+//     irods::experimental::filesystem::path resolved_path;
+//     if (auto bucket = irods::s3::resolve_bucket(*thing, url.segments()); bucket.has_value()) {
+//         resolved_path = bucket.value();
+//     }
+//     else {
+//         boost::beast::http::response<boost::beast::http::empty_body> response;
+//         response.result(boost::beast::http::status::not_found);
+//         boost::beast::http::write(socket, response);
+//         co_return;
+//     }
+//     auto base_length = resolved_path.string().size();
+//     resolved_path = irods::s3::finish_path(resolved_path, url.segments());
+//     boost::property_tree::ptree document;
 
-    std::string filename_prefix = "%";
+//     std::string filename_prefix = "%";
 
-    if (const auto prefix = url.params().find("prefix"); prefix != url.params().end()) {
-        filename_prefix = (*prefix).value + "%";
-    }
+//     if (const auto prefix = url.params().find("prefix"); prefix != url.params().end()) {
+//         filename_prefix = (*prefix).value + "%";
+//     }
 
-    std::string query = fmt::format(
-        "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}%' AND DATA_NAME like "
-        "'{}'",
-        resolved_path.c_str(),
-        filename_prefix,
-        resolved_path.string().substr(0, resolved_path.string().length() - 1),
-        filename_prefix);
+//     std::string query = fmt::format(
+//         "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}%' AND DATA_NAME like "
+//         "'{}'",
+//         resolved_path.c_str(),
+//         filename_prefix,
+//         resolved_path.string().substr(0, resolved_path.string().length() - 1),
+//         filename_prefix);
 
-    std::cout << query << std::endl;
+//     std::cout << query << std::endl;
 
-    auto contents = document.add("ListBucketResult", "");
+//     auto contents = document.add("ListBucketResult", "");
 
-    bool found_objects = false;
-    std::unordered_set<std::string> seen_keys;
+//     bool found_objects = false;
+//     std::unordered_set<std::string> seen_keys;
 
-    for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
-        found_objects = true;
-        ptree object;
-        object.put("Key", i[1].substr(base_length));
-        object.put("Etag", i[1]);
-        object.put("Owner", i[2]);
-        object.put("Size", atoi(i[3].c_str()));
-        // add_child always creates a new node, put_child would replace the previous one.
-        document.add_child("ListBucketResult.Contents", object);
-    }
+//     for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
+//         found_objects = true;
+//         ptree object;
+//         object.put("Key", i[1].substr(base_length));
+//         object.put("Etag", i[1]);
+//         object.put("Owner", i[2]);
+//         object.put("Size", atoi(i[3].c_str()));
+//         // add_child always creates a new node, put_child would replace the previous one.
+//         document.add_child("ListBucketResult.Contents", object);
+//     }
 
-    // Required for genquery limitations :p
-    query = fmt::format(
-        "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}/{}'",
-        resolved_path.string().substr(0, resolved_path.string().length() - 1),
-        filename_prefix);
-    std::cout << query << std::endl;
-    for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
-        found_objects = true;
-        ptree object;
-        object.put("Key", i[0].substr(base_length)+"/"+i[1]);
-        object.put("Etag", i[1]);
-        object.put("Owner", i[2]);
-        object.put("Size", atoi(i[3].c_str()));
-        document.add_child("ListBucketResult.Contents", object);
-    }
+//     // Required for genquery limitations :p
+//     query = fmt::format(
+//         "select COLL_NAME,DATA_NAME,DATA_OWNER_NAME,DATA_SIZE where COLL_NAME like '{}/{}'",
+//         resolved_path.string().substr(0, resolved_path.string().length() - 1),
+//         filename_prefix);
+//     std::cout << query << std::endl;
+//     for (auto&& i : irods::query<RcComm>(thing.get(), query)) {
+//         found_objects = true;
+//         ptree object;
+//         object.put("Key", i[0].substr(base_length) + "/" + i[1]);
+//         object.put("Etag", i[1]);
+//         object.put("Owner", i[2]);
+//         object.put("Size", atoi(i[3].c_str()));
+//         document.add_child("ListBucketResult.Contents", object);
+//     }
 
-    if (found_objects) {
-        std::stringstream s;
-        boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
-        settings.indent_char = ' ';
-        settings.indent_count = 4;
-        std::cout << "Found objects" << std::endl;
-        boost::property_tree::write_xml(s, document, settings);
-        boost::beast::http::response<boost::beast::http::string_body> response;
-        response.body() = s.str();
-        std::cout << s.str();
+//     if (found_objects) {
+//         std::stringstream s;
+//         boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
+//         settings.indent_char = ' ';
+//         settings.indent_count = 4;
+//         std::cout << "Found objects" << std::endl;
+//         boost::property_tree::write_xml(s, document, settings);
+//         boost::beast::http::response<boost::beast::http::string_body> response;
+//         response.body() = s.str();
+//         std::cout << s.str();
 
-        boost::beast::http::write(socket, response);
-    }
-    else {
-        std::cout << "Couldn't find anything" << std::endl;
-        boost::beast::http::response<boost::beast::http::empty_body> response;
-        response.result(boost::beast::http::status::not_found);
-        boost::beast::http::write(socket, response);
-    }
-    co_return;
-}
+//         boost::beast::http::write(socket, response);
+//     }
+//     else {
+//         std::cout << "Couldn't find anything" << std::endl;
+//         boost::beast::http::response<boost::beast::http::empty_body> response;
+//         response.result(boost::beast::http::status::not_found);
+//         boost::beast::http::write(socket, response);
+//     }
+//     co_return;
+// }
 
-asio::awaitable<void>
-handle_getobject(asio::ip::tcp::socket& socket, static_buffer_request_parser& parser, const boost::urls::url_view& url)
-{
-    auto thing = irods::s3::get_connection();
-    auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
-    // Permission verification stuff should go roughly here.
+// asio::awaitable<void>
+// handle_getobject(asio::ip::tcp::socket& socket, static_buffer_request_parser& parser, const boost::urls::url_view& url)
+// {
+//     auto thing = irods::s3::get_connection();
+//     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
+//     // Permission verification stuff should go roughly here.
 
-    fs::path path = irods::s3::resolve_bucket(*thing, url.segments()).c_str();
-    path = irods::s3::finish_path(path, url.segments());
-    std::cout << "Requested " << path << std::endl;
+//     fs::path path;
+//     if (auto bucket = irods::s3::resolve_bucket(*thing, url.segments()); bucket.has_value()) {
+//         path = bucket.value();
+//         path = irods::s3::finish_path(path, url.segments());
+//     }
+//     else {
+//         boost::beast::http::response<boost::beast::http::empty_body> response;
+//         response.result(boost::beast::http::status::not_found);
+//         std::cerr << "Could not find file" << std::endl;
+//         boost::beast::http::write(socket, response);
 
-    try {
-        if (fs::client::exists(*thing, path)) {
-            std::cout << "Trying to write file" << std::endl;
-            boost::beast::http::response<boost::beast::http::buffer_body> response;
-            boost::beast::http::response_serializer<boost::beast::http::buffer_body> serializer{response};
-            char buffer_backing[4096];
-            response.result(boost::beast::http::status::accepted);
-            std::string length_field =
-                std::to_string(irods::experimental::filesystem::client::data_object_size(*thing, path));
-            response.insert(boost::beast::http::field::content_length, length_field);
-            auto md5 = irods::experimental::filesystem::client::data_object_checksum(*thing, path);
-            response.insert("Content-MD5", md5);
-            boost::beast::http::write_header(socket, serializer);
-            boost::beast::error_code ec;
-            irods::experimental::io::client::default_transport xtrans{*thing};
-            irods::experimental::io::idstream d{xtrans, path};
+//         co_return;
+//     }
+//     std::cout << "Requested " << path << std::endl;
 
-            std::streampos current, size;
-            while (d.good()) {
-                d.read(buffer_backing, 4096);
-                current = d.gcount();
-                size += current;
-                response.body().data = buffer_backing;
-                response.body().size = current;
-                std::cout << "Wrote " << current << " bytes" << std::endl;
-                if (d.bad()) {
-                    std::cerr << "Weird error?" << std::endl;
-                    exit(12);
-                }
-                try {
-                    boost::beast::http::write(socket, serializer);
-                }
-                catch (boost::system::system_error& e) {
-                    if (e.code() != boost::beast::http::error::need_buffer) {
-                        std::cout << "Not a good error!" << std::endl;
-                        throw e;
-                    }
-                    else {
-                        // It would be nice if we could figure out something a bit more
-                        // semantic than catching an exception
-                        std::cout << "Good error!" << std::endl;
-                    }
-                }
-            }
-            response.body().size = d.gcount();
-            response.body().more = false;
-            boost::beast::http::write(socket, serializer);
-            std::cout << "Wrote " << size << " bytes total" << std::endl;
-        }
-        else {
-            boost::beast::http::response<boost::beast::http::empty_body> response;
-            response.result(boost::beast::http::status::not_found);
-            std::cerr << "Could not find file" << std::endl;
-            boost::beast::http::write(socket, response);
-        }
-    }
-    catch (std::exception& e) {
-        std::cout << boost::stacktrace::stacktrace() << std::endl;
-        std::cout << "error! " << e.what() << std::endl;
-    }
+//     try {
+//         if (fs::client::exists(*thing, path)) {
+//             std::cout << "Trying to write file" << std::endl;
+//             boost::beast::http::response<boost::beast::http::buffer_body> response;
+//             boost::beast::http::response_serializer<boost::beast::http::buffer_body> serializer{response};
+//             char buffer_backing[4096];
+//             response.result(boost::beast::http::status::accepted);
+//             std::string length_field =
+//                 std::to_string(irods::experimental::filesystem::client::data_object_size(*thing, path));
+//             response.insert(boost::beast::http::field::content_length, length_field);
+//             auto md5 = irods::experimental::filesystem::client::data_object_checksum(*thing, path);
+//             response.insert("Content-MD5", md5);
+//             boost::beast::http::write_header(socket, serializer);
+//             boost::beast::error_code ec;
+//             irods::experimental::io::client::default_transport xtrans{*thing};
+//             irods::experimental::io::idstream d{xtrans, path};
 
-    boost::beast::http::response<boost::beast::http::dynamic_body> response;
+//             std::streampos current, size;
+//             while (d.good()) {
+//                 d.read(buffer_backing, 4096);
+//                 current = d.gcount();
+//                 size += current;
+//                 response.body().data = buffer_backing;
+//                 response.body().size = current;
+//                 std::cout << "Wrote " << current << " bytes" << std::endl;
+//                 if (d.bad()) {
+//                     std::cerr << "Weird error?" << std::endl;
+//                     exit(12);
+//                 }
+//                 try {
+//                     boost::beast::http::write(socket, serializer);
+//                 }
+//                 catch (boost::system::system_error& e) {
+//                     if (e.code() != boost::beast::http::error::need_buffer) {
+//                         std::cout << "Not a good error!" << std::endl;
+//                         throw e;
+//                     }
+//                     else {
+//                         // It would be nice if we could figure out something a bit more
+//                         // semantic than catching an exception
+//                         std::cout << "Good error!" << std::endl;
+//                     }
+//                 }
+//             }
+//             response.body().size = d.gcount();
+//             response.body().more = false;
+//             boost::beast::http::write(socket, serializer);
+//             std::cout << "Wrote " << size << " bytes total" << std::endl;
+//         }
+//         else {
+//             boost::beast::http::response<boost::beast::http::empty_body> response;
+//             response.result(boost::beast::http::status::not_found);
+//             std::cerr << "Could not find file" << std::endl;
+//             boost::beast::http::write(socket, response);
+//         }
+//     }
+//     catch (std::exception& e) {
+//         std::cout << boost::stacktrace::stacktrace() << std::endl;
+//         std::cout << "error! " << e.what() << std::endl;
+//     }
 
-    co_return;
-}
+//     boost::beast::http::response<boost::beast::http::dynamic_body> response;
+
+//     co_return;
+// }
 
 // for now let's just list out what we get.
 asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
@@ -307,13 +328,13 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
                 // will be corrected in the future when boost::url is released properly as part
                 // of boost
                 if (f != url.params().end() && (*f).value == "2") {
-                    co_await handle_listobjects_v2(socket, parser, url);
+                    co_await irods::s3::actions::handle_listobjects_v2(socket, parser, url);
                 }
             }
             else {
                 // GetObject
                 std::cout << "getobject detected" << std::endl;
-                co_await handle_getobject(socket, parser, url);
+                co_await irods::s3::actions::handle_getobject(socket, parser, url);
             }
             break;
         case boost::beast::http::verb::put:
@@ -354,17 +375,13 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
         // Using async_read here causes it to completely eat the entire input without handling it properly.
         auto read = co_await beast::http::async_read_some(socket, buffer, parser, asio::use_awaitable);
         std::cout << "Read " << read << " bytes" << std::endl;
-        if (ec == beast::http::error::need_buffer)
+        if (ec == beast::http::error::need_buffer) {
             ec = {};
-        else if (ec)
+        }
+        else if (ec) {
             co_return;
+        }
     }
-    // beast::http::response<beast::http::string_body> response;
-    // response.body() = "Hi";
-    // response.result(beast::http::status::ok);
-    // response.insert("etag", "etag");
-    // beast::http::response_serializer<beast::http::string_body> sr{response};
-    // beast::http::write(socket, sr, ec);
     co_return;
 }
 
@@ -385,12 +402,13 @@ int main()
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
     {
-        
         auto config = R"({"name":"static_bucket_resolver", "mappings": {"wow": "/tempZone/home/rods/wow/"}})"_json;
         auto i = irods::s3::get_connection();
         irods::s3::plugins::load_plugin(*i, "static_bucket_resolver", config);
-    }{
-        auto config = R"({"name":"static_authentication_resolver", "users": {"no": {"username":"rods","secret_key":"heck"}}})"_json;
+    }
+    {
+        auto config =
+            R"({"name":"static_authentication_resolver", "users": {"no": {"username":"rods","secret_key":"heck"}}})"_json;
         auto i = irods::s3::get_connection();
         irods::s3::plugins::load_plugin(*i, "static_authentication_resolver", config);
     }

@@ -1,6 +1,7 @@
 #include "./bucket_plugin.h"
 #include "./bucket.hpp"
 
+#include <stdexcept>
 #include <unordered_map>
 #include <string>
 #include <string_view>
@@ -75,12 +76,13 @@ std::vector<std::string> list_buckets(rcComm_t* connection, const char* username
 }
 
 /// Produces the basic irods path of the bucket. This will need concatenation with the remainder of the key.
-fs::path irods::s3::resolve_bucket(rcComm_t& connection, const boost::urls::segments_view& view)
+std::optional<fs::path> irods::s3::resolve_bucket(rcComm_t& connection, const boost::urls::segments_view& view)
 {
     char buffer[300];
-    size_t pathlen;
+    size_t pathlen=0;
     int result = active_bucket_plugin.resolve(&connection, (*view.begin()).c_str(), buffer, &pathlen);
     if (result != 0) {
+        return std::nullopt;
     }
     fs::path bucket_path(buffer, buffer + pathlen);
     // for(auto i = ++view.begin();i!=view.end();i++){

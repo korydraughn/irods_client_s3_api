@@ -1,0 +1,1 @@
+target_sources(irods_s3_bridge PRIVATE listobjects.cpp getobject.cpp)

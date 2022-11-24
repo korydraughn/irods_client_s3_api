@@ -83,5 +83,5 @@ std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm
     if (!active_authentication_plugin.secret_key(conn, user.data(), secret_key)) {
         return std::nullopt;
     }
-    return std::string(secret_key);
+    return std::string(secret_key) ;
 }

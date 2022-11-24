@@ -1,0 +1,26 @@
+#pragma once
+
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/this_coro.hpp>
+#include <experimental/coroutine>
+#include <boost/beast.hpp>
+#include <irods/filesystem.hpp>
+#include <boost/asio.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/url.hpp>
+
+#include "../types.hpp"
+namespace irods::s3::actions
+{
+    boost::asio::awaitable<void> handle_listobjects_v2(
+        boost::asio::ip::tcp::socket& socket,
+        static_buffer_request_parser& parser,
+        const boost::urls::url_view& url);
+    
+    // :thinksmart:
+    boost::asio::awaitable<void>
+    handle_getobject(
+        boost::asio::ip::tcp::socket& socket,
+        static_buffer_request_parser& parser,
+        const boost::urls::url_view& url);
+} //namespace irods::s3::actions
