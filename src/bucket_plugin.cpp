@@ -79,9 +79,11 @@ std::vector<std::string> list_buckets(rcComm_t* connection, const char* username
 std::optional<fs::path> irods::s3::resolve_bucket(rcComm_t& connection, const boost::urls::segments_view& view)
 {
     char buffer[300];
-    size_t pathlen=0;
+    memset(buffer, 0, 300);
+    size_t pathlen = 0;
     int result = active_bucket_plugin.resolve(&connection, (*view.begin()).c_str(), buffer, &pathlen);
-    if (result != 0) {
+
+    if (!result) {
         return std::nullopt;
     }
     fs::path bucket_path(buffer, buffer + pathlen);
@@ -94,17 +96,8 @@ std::optional<fs::path> irods::s3::resolve_bucket(rcComm_t& connection, const bo
 fs::path irods::s3::finish_path(const fs::path& base, const boost::urls::segments_view& view)
 {
     auto result = base;
-    for(auto i = ++view.begin();i!=view.end();i++){
-        result/= (*i).c_str();
+    for (auto i = ++view.begin(); i != view.end(); i++) {
+        result /= (*i).c_str();
     }
     return result;
 }
-
-// std::filesystem::path resolve_bucket(const boost::urls::segments_view& view)
-// {
-//     std::filesystem::path p;
-//     p = "/tempZone/home/rods";
-//     for (const auto& i : view)
-//         p /= i;
-//     return p;
-// }

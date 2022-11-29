@@ -19,5 +19,5 @@ namespace irods::s3
         };
     } //namespace __detail
     std::unique_ptr<rcComm_t, __detail::rcComm_Deleter> get_connection();
-
+    using connection_handle = std::unique_ptr<rcComm_t, __detail::rcComm_Deleter>;
 } //namespace irods::s3

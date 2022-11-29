@@ -62,7 +62,7 @@ namespace
 
     bool should_include_header(const std::string_view& sv)
     {
-        return sv.starts_with("X-Amz") || sv == "Host" || sv == "Content-Type";
+        return sv.starts_with("X-Amz") || sv == "Host" || sv == "Content-Type" || sv=="Content-MD5";
     }
 
     std::string canonicalize_request(

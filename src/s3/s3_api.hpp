@@ -10,16 +10,22 @@
 #include <boost/url.hpp>
 
 #include "../types.hpp"
+#include "../connection.hpp"
+
 namespace irods::s3::actions
 {
     boost::asio::awaitable<void> handle_listobjects_v2(
         boost::asio::ip::tcp::socket& socket,
         static_buffer_request_parser& parser,
         const boost::urls::url_view& url);
-    
+
     // :thinksmart:
-    boost::asio::awaitable<void>
-    handle_getobject(
+    boost::asio::awaitable<void> handle_getobject(
+        boost::asio::ip::tcp::socket& socket,
+        static_buffer_request_parser& parser,
+        const boost::urls::url_view& url);
+
+    boost::asio::awaitable<void> handle_putobject(
         boost::asio::ip::tcp::socket& socket,
         static_buffer_request_parser& parser,
         const boost::urls::url_view& url);

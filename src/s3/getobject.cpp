@@ -12,6 +12,7 @@
 #include <irods/filesystem/filesystem_error.hpp>
 #include <irods/filesystem/path.hpp>
 #include <irods/genQuery.h>
+#include <irods/irods_exception.hpp>
 #include <irods/msParam.h>
 #include <irods/rcConnect.h>
 #include <irods/rodsClient.h>
@@ -26,6 +27,7 @@
 #include <irods/transport/default_transport.hpp>
 #include <irods/irods_query.hpp>
 #include <irods/query_builder.hpp>
+#include <irods/rodsErrorTable.h>
 
 #include <boost/stacktrace.hpp>
 
@@ -42,7 +44,12 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
     auto thing = irods::s3::get_connection();
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
-
+    if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
+        boost::beast::http::response<boost::beast::http::empty_body> response;
+        response.result(boost::beast::http::status::forbidden);
+        boost::beast::http::write(socket, response);
+        co_return;
+    }
     fs::path path;
     if (auto bucket = irods::s3::resolve_bucket(*thing, url.segments()); bucket.has_value()) {
         path = bucket.value();
@@ -51,7 +58,7 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
     else {
         boost::beast::http::response<boost::beast::http::empty_body> response;
         response.result(boost::beast::http::status::not_found);
-        std::cerr << "Could not find file" << std::endl;
+        std::cerr << "Could not find bucket" << std::endl;
         boost::beast::http::write(socket, response);
 
         co_return;
@@ -113,6 +120,24 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
             std::cerr << "Could not find file" << std::endl;
             boost::beast::http::write(socket, response);
         }
+    }
+    catch (irods::exception& e) {
+        boost::beast::http::response<boost::beast::http::empty_body> response;
+
+        response.result(boost::beast::http::status::forbidden);
+
+        switch (e.code()) {
+            case USER_ACCESS_DENIED:
+            case CAT_NO_ACCESS_PERMISSION:
+                response.result(boost::beast::http::status::forbidden);
+                break;
+            default:
+                response.result(boost::beast::http::status::internal_server_error);
+                break;
+        }
+
+        boost::beast::http::write(socket, response);
+        co_return;
     }
     catch (std::exception& e) {
         std::cout << boost::stacktrace::stacktrace() << std::endl;
