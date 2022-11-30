@@ -84,16 +84,19 @@ boost::asio::awaitable<void> irods::s3::actions::handle_putobject(
         parser.get().body().data = buf;
         parser.get().body().size = sizeof(buf);
         response.set("Etag", path.c_str());
-        response.set("x-amz-id-2", "no");
-        response.set("x-amz-request-id", "...");
+        // response.set("x-amz-id-2", "no");
+        // response.set("x-amz-request-id", "...");
         response.set("Connection", "close");
         while (!parser.is_done()) {
-            auto read = boost::beast::http::read(socket, buffer, parser, ec);
+            // auto read = boost::beast::http::read_some(socket, buffer, parser, ec);
+            auto read = co_await boost::beast::http::async_read_some(socket, buffer, parser, asio::use_awaitable);
 
-            std::cout << "Read " << read << std::endl<<std::endl;
-            std::cout.write((char*) parser.get().body().data, read);
+            size_t read_bytes = sizeof(buf) - parser.get().body().size;
+
+            std::cout << "Read " << read_bytes << std::endl << std::endl;
+            std::cout.write((char*) buf, read_bytes);
             try {
-                d.write((char*) parser.get().body().data, read);
+                d.write((char*) buf, read_bytes);
             }
             catch (std::exception& e) {
                 std::cout << e.what() << std::endl;
@@ -102,13 +105,20 @@ boost::asio::awaitable<void> irods::s3::actions::handle_putobject(
             if (ec == beast::http::error::need_buffer) {
                 ec = {};
             }
-            else {
+            else if (ec) {
+                std::cout << ec.what() << std::endl;
                 co_return;
             }
-            if (read == 0)
-                break;
+            // if (read == 0) {
+            //     break;
+            // }
         }
-        boost::beast::http::write(socket, response);
+
+        boost::beast::http::write(socket, response, ec);
+        if (ec) {
+            std::cout << "Error! " << ec.what() << std::endl;
+        }
+        std::cout << "wrote response" << std::endl;
     }
     co_return;
 }
