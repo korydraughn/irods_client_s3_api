@@ -32,7 +32,6 @@
 #include <boost/stacktrace.hpp>
 
 namespace asio = boost::asio;
-namespace this_coro = boost::asio::this_coro;
 namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 
@@ -45,9 +44,9 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
     auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
     // Permission verification stuff should go roughly here.
     if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
-        boost::beast::http::response<boost::beast::http::empty_body> response;
-        response.result(boost::beast::http::status::forbidden);
-        boost::beast::http::write(socket, response);
+        beast::http::response<beast::http::empty_body> response;
+        response.result(beast::http::status::forbidden);
+        beast::http::write(socket, response);
         co_return;
     }
     fs::path path;
@@ -56,10 +55,10 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
         path = irods::s3::finish_path(path, url.segments());
     }
     else {
-        boost::beast::http::response<boost::beast::http::empty_body> response;
-        response.result(boost::beast::http::status::not_found);
+        beast::http::response<beast::http::empty_body> response;
+        response.result(beast::http::status::not_found);
         std::cerr << "Could not find bucket" << std::endl;
-        boost::beast::http::write(socket, response);
+        beast::http::write(socket, response);
 
         co_return;
     }
@@ -68,31 +67,31 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
     try {
         if (fs::client::exists(*thing, path)) {
             std::cout << "Trying to write file" << std::endl;
-            boost::beast::http::response<boost::beast::http::buffer_body> response;
-            boost::beast::http::response_serializer<boost::beast::http::buffer_body> serializer{response};
+            beast::http::response<beast::http::buffer_body> response;
+            beast::http::response_serializer<beast::http::buffer_body> serializer{response};
             char buffer_backing[4096];
 
             std::string length_field =
                 std::to_string(irods::experimental::filesystem::client::data_object_size(*thing, path));
-            response.insert(boost::beast::http::field::content_length, length_field);
+            response.insert(beast::http::field::content_length, length_field);
             auto md5 = irods::experimental::filesystem::client::data_object_checksum(*thing, path);
             response.insert("Content-MD5", md5);
 
-            boost::beast::error_code ec;
+            beast::error_code ec;
             irods::experimental::io::client::default_transport xtrans{*thing};
             irods::experimental::io::idstream d{xtrans, path};
 
             if (d.fail() || d.bad()) {
                 std::cout << "Fail/badbit set" << std::endl;
-                response.result(boost::beast::http::status::forbidden);
+                response.result(beast::http::status::forbidden);
                 response.body().more = false;
-                boost::beast::http::write(socket, response);
+                beast::http::write(socket, response);
                 co_return;
             }
-            boost::beast::http::write_header(socket, serializer);
+            beast::http::write_header(socket, serializer);
             std::streampos current, size;
             while (d.good()) {
-                response.result(boost::beast::http::status::ok);
+                response.result(beast::http::status::ok);
                 d.read(buffer_backing, 4096);
                 current = d.gcount();
                 size += current;
@@ -104,10 +103,10 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
                     exit(12);
                 }
                 try {
-                    boost::beast::http::write(socket, serializer);
+                    beast::http::write(socket, serializer);
                 }
                 catch (boost::system::system_error& e) {
-                    if (e.code() != boost::beast::http::error::need_buffer) {
+                    if (e.code() != beast::http::error::need_buffer) {
                         std::cout << "Not a good error!" << std::endl;
                         throw e;
                     }
@@ -120,32 +119,32 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
             }
             response.body().size = d.gcount();
             response.body().more = false;
-            boost::beast::http::write(socket, serializer);
+            beast::http::write(socket, serializer);
             std::cout << "Wrote " << size << " bytes total" << std::endl;
         }
         else {
-            boost::beast::http::response<boost::beast::http::empty_body> response;
-            response.result(boost::beast::http::status::not_found);
+            beast::http::response<beast::http::empty_body> response;
+            response.result(beast::http::status::not_found);
             std::cerr << "Could not find file" << std::endl;
-            boost::beast::http::write(socket, response);
+            beast::http::write(socket, response);
         }
     }
     catch (irods::exception& e) {
-        boost::beast::http::response<boost::beast::http::empty_body> response;
+        beast::http::response<beast::http::empty_body> response;
         std::cout << "Exception! in the getobject" << std::endl;
-        response.result(boost::beast::http::status::forbidden);
+        response.result(beast::http::status::forbidden);
 
         switch (e.code()) {
             case USER_ACCESS_DENIED:
             case CAT_NO_ACCESS_PERMISSION:
-                response.result(boost::beast::http::status::forbidden);
+                response.result(beast::http::status::forbidden);
                 break;
             default:
-                response.result(boost::beast::http::status::internal_server_error);
+                response.result(beast::http::status::internal_server_error);
                 break;
         }
 
-        boost::beast::http::write(socket, response);
+        beast::http::write(socket, response);
         co_return;
     }
     catch (std::exception& e) {
@@ -153,7 +152,7 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
         std::cout << "error! " << e.what() << std::endl;
     }
 
-    boost::beast::http::response<boost::beast::http::dynamic_body> response;
+    beast::http::response<beast::http::dynamic_body> response;
 
     co_return;
 }

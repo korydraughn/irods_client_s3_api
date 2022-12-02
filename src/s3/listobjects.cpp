@@ -23,9 +23,7 @@
 #include <fmt/format.h>
 
 namespace asio = boost::asio;
-namespace this_coro = boost::asio::this_coro;
 namespace beast = boost::beast;
-namespace fs = irods::experimental::filesystem;
 
 asio::awaitable<void> irods::s3::actions::handle_listobjects_v2(
     asio::ip::tcp::socket& socket,
@@ -37,9 +35,9 @@ asio::awaitable<void> irods::s3::actions::handle_listobjects_v2(
     auto thing = irods::s3::get_connection();
 
     if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
-        boost::beast::http::response<boost::beast::http::empty_body> response;
-        response.result(boost::beast::http::status::forbidden);
-        boost::beast::http::write(socket, response);
+        beast::http::response<beast::http::empty_body> response;
+        response.result(beast::http::status::forbidden);
+        beast::http::write(socket, response);
         co_return;
     }
 
@@ -48,9 +46,9 @@ asio::awaitable<void> irods::s3::actions::handle_listobjects_v2(
         resolved_path = bucket.value();
     }
     else {
-        boost::beast::http::response<boost::beast::http::empty_body> response;
-        response.result(boost::beast::http::status::not_found);
-        boost::beast::http::write(socket, response);
+        beast::http::response<beast::http::empty_body> response;
+        response.result(beast::http::status::not_found);
+        beast::http::write(socket, response);
         co_return;
     }
     auto base_length = resolved_path.string().size();
@@ -112,17 +110,17 @@ asio::awaitable<void> irods::s3::actions::handle_listobjects_v2(
         settings.indent_count = 4;
         std::cout << "Found objects" << std::endl;
         boost::property_tree::write_xml(s, document, settings);
-        boost::beast::http::response<boost::beast::http::string_body> response;
+        beast::http::response<beast::http::string_body> response;
         response.body() = s.str();
         std::cout << s.str();
 
-        boost::beast::http::write(socket, response);
+        beast::http::write(socket, response);
     }
     else {
         std::cout << "Couldn't find anything" << std::endl;
-        boost::beast::http::response<boost::beast::http::empty_body> response;
-        response.result(boost::beast::http::status::not_found);
-        boost::beast::http::write(socket, response);
+        beast::http::response<beast::http::empty_body> response;
+        response.result(beast::http::status::not_found);
+        beast::http::write(socket, response);
     }
     co_return;
 }
