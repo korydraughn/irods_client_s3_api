@@ -18,3 +18,6 @@ def set_access(filename, access_level):
 def read_file(client, filename):
     print(filename)
     return client.get_object(Bucket=BUCKET_NAME, Key=filename)
+
+def remove_file(client, filename):
+    sp.run(['irm', f'{BUCKET_PATH}{filename}'])
