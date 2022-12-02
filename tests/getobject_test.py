@@ -9,6 +9,7 @@ from tests.utility import *
 # Also the "test/hi" and "hi" disparity is already getting old, so I
 # should do something about that.
 
+
 class TestGetObject(unittest.TestCase):
     def setUp(self):
         session = botocore.session.get_session()
@@ -18,7 +19,7 @@ class TestGetObject(unittest.TestCase):
                                             endpoint_url="http://127.0.0.1:8080",
                                             aws_access_key_id="no",
                                             aws_secret_access_key="heck")
-    
+
     def tearDown(self):
         self.client.close()
 
@@ -35,3 +36,9 @@ class TestGetObject(unittest.TestCase):
         set_access("Hi", "own")
         read_file(self.client, "test/Hi")
         remove_file(self.client, 'Hi')
+
+    def test_get_contents(self):
+        self.client.put_object(Bucket="wow", Key="test/hi", Body=b"Hello")
+        resp = self.client.get_object(Bucket="wow", Key="test/hi")
+        self.assertEquals(resp["Body"].read(), b"Hello")
+        remove_file(self.client,"test/hi")
