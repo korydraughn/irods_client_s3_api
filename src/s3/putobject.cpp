@@ -72,7 +72,6 @@ boost::asio::awaitable<void> irods::s3::actions::handle_putobject(
         co_return;
     }
     std::cout << "Path: [" << path << "]" << std::endl;
-    // char buffer[4096];
     {
         boost::beast::flat_buffer buffer;
         boost::beast::http::response<boost::beast::http::empty_body> response;

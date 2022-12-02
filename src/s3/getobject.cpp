@@ -71,19 +71,28 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
             boost::beast::http::response<boost::beast::http::buffer_body> response;
             boost::beast::http::response_serializer<boost::beast::http::buffer_body> serializer{response};
             char buffer_backing[4096];
-            response.result(boost::beast::http::status::accepted);
+
             std::string length_field =
                 std::to_string(irods::experimental::filesystem::client::data_object_size(*thing, path));
             response.insert(boost::beast::http::field::content_length, length_field);
             auto md5 = irods::experimental::filesystem::client::data_object_checksum(*thing, path);
             response.insert("Content-MD5", md5);
-            boost::beast::http::write_header(socket, serializer);
+
             boost::beast::error_code ec;
             irods::experimental::io::client::default_transport xtrans{*thing};
             irods::experimental::io::idstream d{xtrans, path};
 
+            if (d.fail() || d.bad()) {
+                std::cout << "Fail/badbit set" << std::endl;
+                response.result(boost::beast::http::status::forbidden);
+                response.body().more = false;
+                boost::beast::http::write(socket, response);
+                co_return;
+            }
+            boost::beast::http::write_header(socket, serializer);
             std::streampos current, size;
             while (d.good()) {
+                response.result(boost::beast::http::status::ok);
                 d.read(buffer_backing, 4096);
                 current = d.gcount();
                 size += current;
@@ -123,7 +132,7 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
     }
     catch (irods::exception& e) {
         boost::beast::http::response<boost::beast::http::empty_body> response;
-
+        std::cout << "Exception! in the getobject" << std::endl;
         response.result(boost::beast::http::status::forbidden);
 
         switch (e.code()) {
