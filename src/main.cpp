@@ -159,6 +159,16 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
                 co_return;
             }
             break;
+        case boost::beast::http::verb::delete_:
+            if (segments.empty()) {
+                std::cout << "Deletebucket detected?" << std::endl
+            }
+            else {
+                std::cout << "Deleteobject detected" << std::endl;
+                co_await irods::s3::actions::handle_deleteobject(socket, parser, url);
+                co_return;
+            }
+            break;
         case boost::beast::http::verb::head:
             // Probably just headbucket and headobject here.
             // and headbucket isn't on the immediate list

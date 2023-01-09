@@ -80,7 +80,7 @@ asio::awaitable<void> irods::s3::actions::handle_listobjects_v2(
         found_objects = true;
         ptree object;
         object.put("Key", i[1].substr(base_length));
-        object.put("Etag", i[1]);
+        object.put("Etag", i[0]);
         object.put("Owner", i[2]);
         object.put("Size", atoi(i[3].c_str()));
         // add_child always creates a new node, put_child would replace the previous one.
@@ -97,7 +97,7 @@ asio::awaitable<void> irods::s3::actions::handle_listobjects_v2(
         found_objects = true;
         ptree object;
         object.put("Key", i[0].substr(base_length) + "/" + i[1]);
-        object.put("Etag", i[1]);
+        object.put("Etag", i[0] + "/" + i[1]);
         object.put("Owner", i[2]);
         object.put("Size", atoi(i[3].c_str()));
         document.add_child("ListBucketResult.Contents", object);
