@@ -161,7 +161,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
             break;
         case boost::beast::http::verb::delete_:
             if (segments.empty()) {
-                std::cout << "Deletebucket detected?" << std::endl
+                std::cout << "Deletebucket detected?" << std::endl;
             }
             else {
                 std::cout << "Deleteobject detected" << std::endl;
@@ -180,10 +180,12 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
                 std::cout << "Headobject detected" << std::endl;
             }
             break;
+            /*
         case boost::beast::http::verb::delete_:
             // DeleteObject
             std::cout << "Deleteobject detected" << std::endl;
             break;
+            */
         default:
             std::cerr << "Oh no..." << std::endl;
             exit(37);

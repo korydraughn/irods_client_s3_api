@@ -30,4 +30,3 @@ class ListObject_Test(TestCase):
         x = self.client.list_objects_v2(Bucket="wow", Prefix='test')
         print(x)
         self.assertEqual(len(x['Contents']), 20, "All items found")
-        print(x['Contents'])

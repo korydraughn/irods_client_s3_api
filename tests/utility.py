@@ -2,13 +2,21 @@ from unittest import *
 import subprocess as sp
 import botocore
 
+from typing import *
+
 BUCKET_NAME = 'wow'
 BUCKET_PATH = '/tempZone/home/rods/wow/test/'
 USER = 'rods'
 
 
-def touch_file(filename, access_level=None):
-    sp.run(["itouch", f"{BUCKET_PATH}{filename}"], check=True)
+def touch_file(filename, access_level=None, contents: Optional[bytes] = None):
+    if contents is None:
+        sp.run(["itouch", f"{BUCKET_PATH}{filename}"], check=True)
+    else:
+        iput_com = sp.Popen(
+            ['iput', '-', f"{BUCKET_PATH}{filename}"], stdin=sp.PIPE, shell=False)
+        iput_com.stdin.write(contents)
+        iput_com.stdin.close()
     if access_level is not None:
         set_access(filename, access_level)
 
