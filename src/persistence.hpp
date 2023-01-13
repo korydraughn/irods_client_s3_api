@@ -22,6 +22,7 @@ namespace irods::s3
     // Multipart upload stuff.
     // Multipart upload functions expect that you resolve the path to the data object prior to
     // calling them.
+    // They also expect you to be able to do the bucket path reversal etc.
 
     /// Create a new multipart upload.
     /// \param connection The connection to the iRODS server
