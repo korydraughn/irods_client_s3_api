@@ -238,6 +238,11 @@ int main()
         auto i = irods::s3::get_connection();
         irods::s3::plugins::load_plugin(*i, "static_authentication_resolver", config);
     }
+    {
+        auto config = R"({})"_json;
+        auto i = irods::s3::get_connection();
+        irods::s3::plugins::load_plugin(*i, "sqlite_persistence_plugin", config);
+    }
 
     asio::io_context io_context(1);
     auto address = asio::ip::make_address("0.0.0.0");

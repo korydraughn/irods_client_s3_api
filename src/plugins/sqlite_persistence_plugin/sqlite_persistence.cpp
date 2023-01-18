@@ -3,6 +3,7 @@
 #include "sqlite3.h"
 #include <mutex>
 #include <nlohmann/json.hpp>
+#include <iostream>
 
 /// We can pretend this is sufficient for migration logic(it probably actually is).
 /// This is distinct from the `schema_version` pragma in sqlite, as that is automatically
@@ -60,11 +61,12 @@ namespace
                 "                                                  part_number  INTEGER,"
                 "                                                  PRIMARY KEY(multipart_id,part_number),"
                 "                                                  FOREIGN KEY(multipart_id)"
-                "                                                          REFERENCES multipart_uploads.id)",
+                "                                                          REFERENCES id)",
                 nullptr,
                 nullptr,
                 &errormsg);
             if (ec != 0) {
+                std::cout << sqlite3_errmsg(connection) << std::endl;
             }
             // Update the schema to avoid rerunning this version.
             ec = sqlite3_exec(connection, "PRAGMA user_version=1", nullptr, nullptr, &errormsg);
@@ -187,4 +189,5 @@ namespace
 extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
 {
     nlohmann::json configuration = config;
+    initialize_db();
 }
