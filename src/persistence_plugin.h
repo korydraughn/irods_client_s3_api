@@ -12,7 +12,9 @@ typedef bool (*multipart_create_fn)(
     const char* resolved_bucket_path,
     size_t* upload_id_length,
     char** upload_id);
+
 /// A function type to enable completing a multipart upload
+/// The part_checksums are permitted to be nullptrs when the user trusts the irods server.
 typedef bool (*multipart_complete_fn)(
     rcComm_t* connection,
     const char* upload_id,
@@ -33,9 +35,12 @@ typedef bool (*multipart_list_uploads_fn)(rcComm_t* connection, char*** multipar
 
 // This is the more general mechanism that can be used for unforeseen needs.
 
+/// A function that sets the value associated with a key from a (hopefully) persistent store.
 typedef bool (*store_key_value_fn)(const char* key, size_t key_length, const char* value, size_t value_length);
 
+/// A function that retrieves the value associated with a key from a persistent store.
 typedef bool (*get_key_value_fn)(const char* key, size_t key_length, char** value, size_t* value_length);
+
 #ifdef BRIDGE_PLUGIN
 extern
 #endif
