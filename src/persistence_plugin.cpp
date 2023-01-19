@@ -28,3 +28,10 @@ void add_persistence_plugin(
     active_persistence_plugin = persistence_plugin{
         create_fn, complete_fn, abort_fn, list_parts_fn, list_uploads_fn, store_key_fn, get_value_fn};
 }
+
+void free_multipart_result(multipart_listing_output* c)
+{
+    std::free(c->key);
+    std::free(c->owner);
+    std::free(c->upload_id);
+}

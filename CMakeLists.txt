@@ -35,6 +35,8 @@ target_link_libraries(static_bucket_resolver PRIVATE irods_client irods_common i
                       ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json fmt::fmt-header-only)
 target_link_libraries(static_authentication_resolver PRIVATE irods_client irods_common irods_server irods_plugin_dependencies
                       ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
+target_link_libraries(sqlite_persistence_plugin PRIVATE irods_client irods_common irods_server irods_plugin_dependencies
+        ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
 
 target_include_directories(irods_s3_bridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third-party/url/include third-party/hmac_sha256)
 set_property(TARGET irods_s3_bridge PROPERTY CXX_STANDARD 20)

@@ -31,6 +31,7 @@ namespace
             // That shouldn't happen in this case, but you know how it goes.
             return SQLITE_OK;
         };
+        // Pretty wild how this is a higher order function operating over each row huh?
         sqlite3_exec(connection, "PRAGMA user_version", capture_version, &current_version, &errormsg);
         if (current_version == SCHEMA_VERSION) {
             return;
@@ -86,9 +87,9 @@ namespace
 
         ec = sqlite3_prepare_v2(db, "INSERT INTO multipart_uploads(path,user) values (?,?)", -1, &insertion, nullptr);
         if (ec != SQLITE_OK) {
+            sqlite3_finalize(insertion);
             // Make a big noise when it falls over
             throw "AAAAA";
-            sqlite3_finalize(insertion);
             // TODO error handling here.
             return nullptr;
         }
@@ -109,6 +110,8 @@ namespace
         if (ec != SQLITE_OK) {
             // Do something you something or other
         }
+
+        sqlite3_reset(insertion);
         sqlite3_finalize(insertion);
         char* result_id = nullptr;
         sqlite3_exec(
@@ -141,12 +144,80 @@ namespace
         }
         // The sqlite type system performs conversions to the column type if possible.
         // if this is a problem in practice, then we can look at changing the table declarations to be
-        // strict, which will result in anything that cannot be converted to the column type
+        // strict[1], which will result in anything that cannot be converted to the column type
         // triggering an SQLITE_CONSTRAINT_DATATYPE error.
+        // [1] that will look like `CREATE TABLE multipart_upload_parts(multipart_id INTEGER, part_number INTEGER)
+        // STRICT`
         ec = sqlite3_bind_text(insertion, 0, upload_id.data(), upload_id.length() + 1, nullptr);
+        if (ec != SQLITE_OK) {
+        }
         ec = sqlite3_bind_text(insertion, 1, part_id.data(), part_id.length() + 1, nullptr);
-        sqlite3_step(insertion);
+        if (ec != SQLITE_OK) {
+        }
+        ec = sqlite3_step(insertion);
+        if (ec != SQLITE_OK) {
+        }
+        sqlite3_reset(insertion);
         sqlite3_finalize(insertion);
+        return true;
+    }
+    /// Retrieve the uploaded parts of a given multipart upload.
+    /// \param connection The connection to the irods server
+    /// \param db The connection to the sqlite3 database
+    /// \param id The multipart upload id to find the parts of.
+    /// \returns std::nullopt in the case where no parts exist, or a list of part numbers that have been uploaded.
+    std::optional<std::vector<std::string>> list_parts(rcComm_t* connection, sqlite3* db, const std::string_view& id)
+    {
+        // TODO Optionally check on whether or not the user is actually the same as the multipart upload's
+        sqlite3_stmt* get_parts;
+        std::vector<std::string> parts;
+        int ec = sqlite3_prepare_v2(
+            db, "SELECT part_number from multipart_upload_parts where id = ?", -1, &get_parts, nullptr);
+
+        ec = sqlite3_bind_text(get_parts, 0, id.data(), id.length(), nullptr);
+        if (ec != SQLITE_OK) {
+            //
+        }
+        for (int rc = sqlite3_step(get_parts); rc != SQLITE_DONE; rc = sqlite3_step(get_parts)) {
+            char* result = sqlite3_column_text(get_parts, 0);
+            if (result) {
+                parts.push_back(result);
+            }
+        }
+
+        sqlite3_reset(get_parts);
+        sqlite3_finalize(get_parts);
+
+        if (parts.empty()) {
+            return std::nullopt;
+        }
+        return parts;
+    }
+
+    bool
+    list_multipart_uploads(rcComm_t* connection, sqlite3* db, multipart_listing_output** output, size_t* output_length)
+    {
+        sqlite3_stmt* upload_results;
+        std::vector<multipart_listing_output> buffer;
+        int ec = sqlite3_prepare_v2(
+            db, "SELECT id, owner, path from multipart_uploads where owner = ?", &upload_results - 1, nullptr);
+        ec = sqlite3_bind_text(upload_results, 0, connection->clientUser.userName, -1, nullptr);
+        if (ec != SQLITE_OK) {
+        }
+        int rc;
+        for (rc = sqlite3_step(upload_results); rc != SQLITE_DONE; rc = sqlite3_step(upload_results)) {
+            buffer.emplace_back({
+                .id = strdup(sqlite3_column_text(upload_results, 0)),
+                .owner = strdup(sqlite3_column_text(upload_results, 1)),
+                .key = strdup(sqlite3_column_text(upload_results, 2)),
+            });
+        }
+        sqlite3_reset(upload_results);
+        sqlite3_finalize(upload_results);
+        // sigh.
+        *output = malloc(sizeof(multipart_listing_output) * buffer.size());
+        *output_length = buffer.size();
+        memcpy(*output, buffer.data(), sizeof(multipart_listing_output) * buffer.size());
         return true;
     }
 
@@ -190,4 +261,5 @@ extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
 {
     nlohmann::json configuration = config;
     initialize_db();
+    add_persistence_plugin([]())
 }

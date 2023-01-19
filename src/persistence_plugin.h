@@ -28,10 +28,25 @@ typedef bool (*multipart_abort_fn)(rcComm_t* connection, const char* upload_id);
 ///
 typedef bool (*multipart_list_parts_fn)(rcComm_t* connection, const char* upload_id, size_t* part_count, char*** parts);
 
+/// Amazon S3 upload listings are a bit more complicated than I expected
+/// Each entry must come with the following information:
+/// The owner, the key(path), and the upload_id.
+///
+/// All the other fields can be omitted or fabricated until need is shown.
+typedef struct
+{
+    char* owner;
+    char* key;
+    char* upload_id;
+} multipart_listing_output;
+
 /// A function type for retrieving in-progress multipart uploads
 /// Takes 3 arguments, the connection to the irods server, the double star character pointer to send a nice location in
 /// memory to and the number of multipart uploads reported.
-typedef bool (*multipart_list_uploads_fn)(rcComm_t* connection, char*** multipart_uploads, size_t* multipart_count);
+typedef bool (*multipart_list_uploads_fn)(
+    rcComm_t* connection,
+    multipart_listing_output** multipart_uploads,
+    size_t* multipart_count);
 
 // This is the more general mechanism that can be used for unforeseen needs.
 
@@ -52,6 +67,12 @@ extern
         multipart_list_uploads_fn,
         store_key_value_fn,
         get_key_value_fn);
+/// Free a multipart listing from
+#ifdef BRIDGE_PLUGIN
+extern
+#endif
+    void
+    free_multipart_result(multipart_listing_output*);
 #ifdef __cplusplus
 }
 #endif
