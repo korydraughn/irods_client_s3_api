@@ -15,6 +15,12 @@ namespace
 
     std::mutex database_creation_mutex;
 
+    void write_message_to_log(void* pdata, int errorcode, const char* message)
+    {
+        FILE* f = fopen("sqlite error.log", "wa");
+        fprintf(stderr, "Error code (%d) with message [%s]\n", errorcode, message);
+        fclose(f);
+    }
     /// Create the tables for the database, migrating it forwards if necessary
     void create_tables(sqlite3* connection)
     {
@@ -179,7 +185,7 @@ namespace
             //
         }
         for (int rc = sqlite3_step(get_parts); rc != SQLITE_DONE; rc = sqlite3_step(get_parts)) {
-            char* result = sqlite3_column_text(get_parts, 0);
+            const char* result = (const char*) sqlite3_column_text(get_parts, 0);
             if (result) {
                 parts.push_back(result);
             }
@@ -200,22 +206,21 @@ namespace
         sqlite3_stmt* upload_results;
         std::vector<multipart_listing_output> buffer;
         int ec = sqlite3_prepare_v2(
-            db, "SELECT id, owner, path from multipart_uploads where owner = ?", &upload_results - 1, nullptr);
+            db, "SELECT id, owner, path from multipart_uploads where owner = ?", -1, &upload_results, nullptr);
         ec = sqlite3_bind_text(upload_results, 0, connection->clientUser.userName, -1, nullptr);
         if (ec != SQLITE_OK) {
         }
         int rc;
         for (rc = sqlite3_step(upload_results); rc != SQLITE_DONE; rc = sqlite3_step(upload_results)) {
-            buffer.emplace_back({
-                .id = strdup(sqlite3_column_text(upload_results, 0)),
-                .owner = strdup(sqlite3_column_text(upload_results, 1)),
-                .key = strdup(sqlite3_column_text(upload_results, 2)),
-            });
+            buffer.emplace_back(multipart_listing_output{
+                .owner = strdup((const char*) sqlite3_column_text(upload_results, 1)),
+                .key = strdup((const char*) sqlite3_column_text(upload_results, 2)),
+                .upload_id = strdup((const char*) sqlite3_column_text(upload_results, 0))});
         }
         sqlite3_reset(upload_results);
         sqlite3_finalize(upload_results);
         // sigh.
-        *output = malloc(sizeof(multipart_listing_output) * buffer.size());
+        *output = static_cast<multipart_listing_output*>(malloc(sizeof(multipart_listing_output) * buffer.size()));
         *output_length = buffer.size();
         memcpy(*output, buffer.data(), sizeof(multipart_listing_output) * buffer.size());
         return true;
@@ -236,6 +241,11 @@ namespace
                 SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOFOLLOW | SQLITE_OPEN_EXRESCODE,
                 // Use the default virtual filesystem, we're not doing anything that needs that, I hope
                 nullptr);
+
+            // This is horrific, but necessary to prevent errors from the wal-file
+            // not being cleaned up, so it's worth it I think.
+            atexit([]() { sqlite3_close_v2(initialize_db()); });
+
             if (ec != SQLITE_OK) {
                 throw sqlite3_errmsg(connection);
             }
@@ -260,6 +270,29 @@ namespace
 extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
 {
     nlohmann::json configuration = config;
+    sqlite3_config(SQLITE_CONFIG_LOG, write_message_to_log, nullptr);
     initialize_db();
-    add_persistence_plugin([]())
+    add_persistence_plugin(
+        [](rcComm_t* connection, const char* resolved_bucket_path, size_t* upload_id_length, char** upload_id) {
+            return true;
+        },
+        [](rcComm_t* connection,
+           const char* upload_id,
+           size_t* part_count,
+           const char** parts,
+           const char** part_checksums) { return true; },
+        [](rcComm_t* connection, const char* upload_id) {
+            //abort upload
+            return false;
+        },
+        [](rcComm_t* connection, const char* upload_id, size_t* part_count, char*** parts) {
+            // list parts
+            return true;
+        },
+        [](rcComm_t* connection, multipart_listing_output** multipart_uploads, size_t* multipart_count) {
+            // list multipart uploads
+            return true;
+        },
+        [](const char* key, size_t key_length, const char* value, size_t value_length) { return true; },
+        [](const char* key, size_t key_length, char** value, size_t* value_length) { return true; });
 }
