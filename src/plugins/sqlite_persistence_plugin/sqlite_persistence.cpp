@@ -17,8 +17,8 @@ namespace
 
     void write_message_to_log(void* pdata, int errorcode, const char* message)
     {
-        FILE* f = fopen("sqlite error.log", "wa");
-        fprintf(stderr, "Error code (%d) with message [%s]\n", errorcode, message);
+        FILE* f = fopen("sqlite error.log", "a");
+        fprintf(f, "Error code (%d) with message [%s]\n", errorcode, message);
         fclose(f);
     }
     /// Create the tables for the database, migrating it forwards if necessary
@@ -80,6 +80,32 @@ namespace
             if (ec != 0) {
             }
         }
+    }
+    bool store_key_value(sqlite3* db, const char* key, size_t key_length, const char* value, size_t value_length)
+    {
+        sqlite3_stmt* inserter;
+        sqlite3_prepare_v2(db, "INSERT INTO key_values values (?,?)", -1, &inserter, nullptr);
+        sqlite3_bind_text(inserter, 0, key, key_length, nullptr);
+        sqlite3_bind_blob(inserter, 1, value, value_length, nullptr);
+        sqlite3_step(inserter);
+        sqlite3_reset(inserter);
+        sqlite3_finalize(inserter);
+        return true;
+    }
+    bool get_key_value(sqlite3* db, const char* key, size_t key_length, char** value, size_t* value_length)
+    {
+        sqlite3_stmt* selector;
+        sqlite3_prepare_v2(db, "SELECT value FROM key_values WHERE key = ?", -1, &selector, nullptr);
+        sqlite3_bind_text(selector, 0, key, key_length) sqlite3_step(selector);
+        size_t length = sqlite3_column_bytes(selector, 0);
+        auto result = sqlite3_column_blob(selector, 0);
+        *value = malloc(length);
+        *value_length = length;
+        memcpy(*value, result, length);
+
+        sqlite3_reset(selector);
+        sqlite3_finalize(inserter);
+        return true;
     }
 
     /// Create a new multipart upload and obtain an unused ID for it.
@@ -175,10 +201,15 @@ namespace
     std::optional<std::vector<std::string>> list_parts(rcComm_t* connection, sqlite3* db, const std::string_view& id)
     {
         // TODO Optionally check on whether or not the user is actually the same as the multipart upload's
+
+        // It may be prudent in the future to also mark this thread_local
+        // as it should be able to be reused.
         sqlite3_stmt* get_parts;
-        std::vector<std::string> parts;
+
         int ec = sqlite3_prepare_v2(
-            db, "SELECT part_number from multipart_upload_parts where id = ?", -1, &get_parts, nullptr);
+            db, "SELECT part_number FROM multipart_upload_parts WHERE id = ?", -1, &get_parts, nullptr);
+
+        std::vector<std::string> parts;
 
         ec = sqlite3_bind_text(get_parts, 0, id.data(), id.length(), nullptr);
         if (ec != SQLITE_OK) {
@@ -222,16 +253,52 @@ namespace
         // sigh.
         *output = static_cast<multipart_listing_output*>(malloc(sizeof(multipart_listing_output) * buffer.size()));
         *output_length = buffer.size();
+
         memcpy(*output, buffer.data(), sizeof(multipart_listing_output) * buffer.size());
         return true;
     }
+    /// Delete the database contents relating to a given upload as an abort.
+    /// \param connection The connection to the irods server
+    /// \param db the database connection
+    /// \param id The upload id to abort
+    /// \returns true on success. false otherwise
+    bool abort_multipart_upload(rcComm_t* connection, sqlite3* db, const std::string_view& id)
+    {
+        sqlite3_stmt *delete_parts, *delete_upload;
+        // smh at the dances we do to avoid sql injection
+        sqlite3_prepare_v2(db, "DELETE FROM multipart_upload_parts WHERE upload_id = ?", -1, &delete_parts, nullptr);
+        sqlite3_prepare_v2(db, "DELETE FROM multipart_uploads where id = ?", -1, &delete_upload, nullptr);
+        sqlite3_bind_text(delete_parts, 0, id.data(), id.length(), nullptr);
+        sqlite3_bind_text(delete_upload, 0, id.data(), id.length(), nullptr);
+        sqlite3_step(delete_parts);
+        sqlite3_step(delete_upload);
+        sqlite3_reset(delete_parts);
+        sqlite3_reset(delete_upload);
+        sqlite3_finalize(delete_parts);
+        sqlite3_finalize(delete_upload);
+        return true;
+    }
 
+    // This may need revisiting, or not. It's hard to say, after all,
+    // regardless of whether or not the upload is completed or aborted
+    // the same thing happens in the database, and specifying
+    // parts here doesn't make a difference.
+    bool complete_multipart_upload(rcComm_t* connection, sqlite3* db, const std::string_view& id)
+    {
+        return abort_multipart_upload(connection, db, id);
+    }
+
+    /// Obtain a handle to the database, specific to the thread that acquires it.
+    /// The connection should not be closed manually as it should be closed with the program, and thus this sets
+    /// an atexit call for it.
+    /// the program is terminated(assuming it terminates from a sigterm rather than a sigkill or sigsegv)
     sqlite3* initialize_db()
     {
         // The idea is that each thread of the runtime only needs one connection
         // and that it only needs to be initialized once, so we can avoid all these
         // goofy calls when we can avoid them
         static thread_local sqlite3* connection = nullptr;
+
         if (not connection) {
             int ec = sqlite3_open_v2(
                 "s3-bridge.db",
@@ -249,6 +316,7 @@ namespace
             if (ec != SQLITE_OK) {
                 throw sqlite3_errmsg(connection);
             }
+
             // This setting substantially improves disk IO characteristics and reduces
             // the number of fsync calls necessary.
             // It also helps prevent readers from blocking writers and visa-versa.
@@ -274,25 +342,43 @@ extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
     initialize_db();
     add_persistence_plugin(
         [](rcComm_t* connection, const char* resolved_bucket_path, size_t* upload_id_length, char** upload_id) {
-            return true;
+            *upload_id = create_multipart_upload(connection, initialize_db(), resolved_bucket_path);
+            return upload_id != nullptr;
         },
         [](rcComm_t* connection,
            const char* upload_id,
            size_t* part_count,
            const char** parts,
-           const char** part_checksums) { return true; },
+           const char** part_checksums) {
+            // Complete upload
+            return complete_multipart_upload(connection, initialize_db(), upload_id);
+        },
         [](rcComm_t* connection, const char* upload_id) {
             //abort upload
-            return false;
+            return abort_multipart_upload(connection, initialize_db(), upload_id);
         },
         [](rcComm_t* connection, const char* upload_id, size_t* part_count, char*** parts) {
             // list parts
-            return true;
+            auto c = list_parts(connection, initialize_db(), upload_id);
+            if (c.has_value()) {
+                *parts = malloc(sizeof(char*) * c.value().size());
+                int j = 0;
+                for (const auto& i : c.value()) {
+                    // This feels gross from a performance perspective.
+                    // probably worth evaluating having the list_parts function
+                    // just write to a char** array directly the first time instead
+                    // of using std::vector and std::string
+                    (*parts)[j] = strdup(i.data());
+                }
+            }
+            return c.has_value();
         },
         [](rcComm_t* connection, multipart_listing_output** multipart_uploads, size_t* multipart_count) {
             // list multipart uploads
-            return true;
+            return list_multipart_uploads(connection, initialize_db(), multipart_uploads, multipart_count);
         },
-        [](const char* key, size_t key_length, const char* value, size_t value_length) { return true; },
+        [](const char* key, size_t key_length, const char* value, size_t value_length) {
+            return store_key_value(initialize_db, key, key_length, value, value_length);
+        },
         [](const char* key, size_t key_length, char** value, size_t* value_length) { return true; });
 }
