@@ -380,5 +380,7 @@ extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
         [](const char* key, size_t key_length, const char* value, size_t value_length) {
             return store_key_value(initialize_db, key, key_length, value, value_length);
         },
-        [](const char* key, size_t key_length, char** value, size_t* value_length) { return true; });
+        [](const char* key, size_t key_length, char** value, size_t* value_length) {
+            return get_key_value(initialize_db(), key, key_length, value, value_length);
+        });
 }

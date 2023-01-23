@@ -67,7 +67,8 @@ extern
         multipart_list_uploads_fn,
         store_key_value_fn,
         get_key_value_fn);
-/// Free a multipart listing from
+
+/// Free a multipart listing from memory
 #ifdef BRIDGE_PLUGIN
 extern
 #endif
