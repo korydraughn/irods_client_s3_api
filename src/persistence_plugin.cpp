@@ -35,3 +35,56 @@ void free_multipart_result(multipart_listing_output* c)
     std::free(c->owner);
     std::free(c->upload_id);
 }
+
+namespace irods::s3
+{
+    /// Create a new multipart upload.
+    /// \param connection The connection to the iRODS server
+    /// \param path The path to create the upload at.
+    /// \returns The ID of the multipart upload
+    std::optional<std::string> create_multipart_upload(rcComm_t* connection, const std::string_view& path)
+    {
+        // Create directory for parts
+        // add it to the persistent store.
+        auto directory_path = irods::s3::multipart::utilities::get_temporary_file(path, "");
+        char* upload_id;
+        size_t upload_id_length;
+        if (not active_persistence_plugin.create_fn(connection, path.data(), &upload_id_length, &upload_id)) {
+            // Not *exactly* sure how to handle this
+        }
+        return std::string(std::string_view(upload_id, upload_id_length));
+    }
+
+    /// Finish a multipart upload, concatenating the files together.
+    /// \param connection The connection to the iRODS server
+    /// \param the final path of the multipart upload
+    /// \param part_ids the list of part_ids specified to include in the finished file.
+    bool complete_multipart_upload(
+        rcComm_t* connection,
+        const std::string_view& path,
+        const std::vector<std::string>& part_ids)
+    {
+    }
+
+    /// Abort a multipart upload, deleting all partial uploads associated with it.
+    /// \param connection The connection to the irods server.
+    /// \param path The path of the upload.
+    bool abort_multipart_upload(rcComm_t* connection, const std::string_view& path)
+    {
+    }
+    std::optional<std::string>
+    create_part(rcComm_t* connection, const std::string_view& upload_id, const std::string_view& part)
+    {
+    }
+
+    std::vector<std::string> list_multipart_upload_parts(rcComm_t* connection, const std::string_view& path)
+    {
+        multipart_listing_output* stuff;
+        size_t stuff_count;
+        active_persistence_plugin.list_uploads_fn(connection, &stuff, &stuff_count);
+    }
+
+    std::vector<std::string> list_multipart_uploads(rcComm_t* connection, const std::string_view& path)
+    {
+    }
+} //namespace irods::s3

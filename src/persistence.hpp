@@ -4,6 +4,7 @@
 #include <string_view>
 #include <string>
 #include <irods/filesystem.hpp>
+#include "./multipart.hpp"
 
 namespace irods::s3
 {
@@ -27,12 +28,14 @@ namespace irods::s3
     /// Create a new multipart upload.
     /// \param connection The connection to the iRODS server
     /// \param path The path to create the upload at.
+    /// \returns The id of the multipart upload, or std::nullopt
     std::optional<std::string> create_multipart_upload(rcComm_t* connection, const std::string_view& path);
 
     /// Finish a multipart upload, concatenating the files together.
     /// \param connection The connection to the iRODS server
     /// \param the final path of the multipart upload
     /// \param part_ids the list of part_ids specified to include in the finished file.
+    /// \returns Whether or not the file was assembled as instructed.
     bool complete_multipart_upload(
         rcComm_t* connection,
         const std::string_view& path,
@@ -41,11 +44,30 @@ namespace irods::s3
     /// Abort a multipart upload, deleting all partial uploads associated with it.
     /// \param connection The connection to the irods server.
     /// \param path The path of the upload.
+    /// \returns If a multipart upload was successfully aborted.
     bool abort_multipart_upload(rcComm_t* connection, const std::string_view& path);
 
+    /// Create a part of a multipart upload
+    /// \param connection The connection to the iRODS server.
+    /// \param upload_id The upload_id of the multipart upload
+    /// \param part The part number of the multipart upload.
+    /// \returns The path to the new part, or nullopt if it did not succeed.
+    std::optional<std::string>
+    create_part(rcComm_t* connection, const std::string_view& upload_id, const std::string_view& part);
+
+    /// List the uploaded parts of the multipart upload.
+    /// \param connection The connection to the irods server
+    /// \param path The path of the multipart upload.
+    /// \returns The part ids of the multipart upload
     std::vector<std::string> list_multipart_upload_parts(rcComm_t* connection, const std::string_view& path);
 
-    std::vector<std::string> list_multipart_uploads(rcComm_t* connection, const std::string_view& path);
+    /// List multipart uploads that are in progress(not completed or aborted).
+    /// \param connection The connection to the iRODS server.
+    /// \param path The path of the multipart upload in question.
+    /// \returns A list of multipart uploads visible to the connection's user.x
+    std::vector<std::string> list_multipart_uploads(
+        rcComm_t* connection,
+        const std::string_view& path); // TODO This needs to actually return a multipart structure of some sort.
 } //namespace irods::s3
 
 #endif

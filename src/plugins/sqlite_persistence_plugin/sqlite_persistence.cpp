@@ -96,15 +96,16 @@ namespace
     {
         sqlite3_stmt* selector;
         sqlite3_prepare_v2(db, "SELECT value FROM key_values WHERE key = ?", -1, &selector, nullptr);
-        sqlite3_bind_text(selector, 0, key, key_length) sqlite3_step(selector);
+        sqlite3_bind_text(selector, 0, key, key_length, nullptr);
+        sqlite3_step(selector);
         size_t length = sqlite3_column_bytes(selector, 0);
         auto result = sqlite3_column_blob(selector, 0);
-        *value = malloc(length);
+        *value = (char*) malloc(length);
         *value_length = length;
         memcpy(*value, result, length);
 
         sqlite3_reset(selector);
-        sqlite3_finalize(inserter);
+        sqlite3_finalize(selector);
         return true;
     }
 
@@ -361,7 +362,7 @@ extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
             // list parts
             auto c = list_parts(connection, initialize_db(), upload_id);
             if (c.has_value()) {
-                *parts = malloc(sizeof(char*) * c.value().size());
+                *parts = (char**) malloc(sizeof(char*) * c.value().size());
                 int j = 0;
                 for (const auto& i : c.value()) {
                     // This feels gross from a performance perspective.
@@ -378,7 +379,7 @@ extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
             return list_multipart_uploads(connection, initialize_db(), multipart_uploads, multipart_count);
         },
         [](const char* key, size_t key_length, const char* value, size_t value_length) {
-            return store_key_value(initialize_db, key, key_length, value, value_length);
+            return store_key_value(initialize_db(), key, key_length, value, value_length);
         },
         [](const char* key, size_t key_length, char** value, size_t* value_length) {
             return get_key_value(initialize_db(), key, key_length, value, value_length);
