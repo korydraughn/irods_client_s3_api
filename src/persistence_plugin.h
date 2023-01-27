@@ -48,6 +48,8 @@ typedef bool (*multipart_list_uploads_fn)(
     multipart_listing_output** multipart_uploads,
     size_t* multipart_count);
 
+typedef bool (*multipart_path_from_id_fn)(rcComm_t* connection, const char* upload_id, char** path);
+
 // This is the more general mechanism that can be used for unforeseen needs.
 
 /// A function that sets the value associated with a key from a (hopefully) persistent store.
@@ -59,13 +61,14 @@ typedef bool (*get_key_value_fn)(const char* key, size_t key_length, char** valu
 #ifdef BRIDGE_PLUGIN
 extern
 #endif
-    void add_persistence_plugin(
+    void
+    add_persistence_plugin(
         multipart_create_fn,
         multipart_complete_fn,
         multipart_abort_fn,
         multipart_list_parts_fn,
         multipart_list_uploads_fn,
-        store_key_value_fn,
+        multipart_path_from_id_fn store_key_value_fn,
         get_key_value_fn);
 
 /// Free a multipart listing from memory

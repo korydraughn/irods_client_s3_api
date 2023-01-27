@@ -221,6 +221,10 @@ asio::awaitable<void> listener()
     }
 }
 
+// TODO allow specifying the target resource. That is necessary for efficiently avoiding weird things whenever
+// we get around to multipart upload handling.
+
+
 int main()
 {
     using namespace nlohmann::literals;

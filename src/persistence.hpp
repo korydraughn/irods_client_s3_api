@@ -61,13 +61,17 @@ namespace irods::s3
     /// \returns The part ids of the multipart upload
     std::vector<std::string> list_multipart_upload_parts(rcComm_t* connection, const std::string_view& path);
 
+    struct multipart_result
+    {
+        std::string upload_id;
+        std::string key;
+    };
     /// List multipart uploads that are in progress(not completed or aborted).
     /// \param connection The connection to the iRODS server.
     /// \param path The path of the multipart upload in question.
     /// \returns A list of multipart uploads visible to the connection's user.x
     std::vector<std::string> list_multipart_uploads(
-        rcComm_t* connection,
-        const std::string_view& path); // TODO This needs to actually return a multipart structure of some sort.
+        rcComm_t* connection); // TODO This needs to actually return a multipart structure of some sort.
 } //namespace irods::s3
 
 #endif

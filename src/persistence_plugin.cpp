@@ -1,6 +1,7 @@
 #include "plugin.hpp"
 #include "persistence_plugin.h"
 #include "persistence.hpp"
+#include "multipart.hpp"
 
 namespace
 {
@@ -11,6 +12,7 @@ namespace
         multipart_abort_fn abort_fn;
         multipart_list_parts_fn list_parts_fn;
         multipart_list_uploads_fn list_uploads_fn;
+        multipart_path_from_id_fn get_path_fn;
         store_key_value_fn store_key_fn;
         get_key_value_fn get_key_value_fn;
     } active_persistence_plugin;
@@ -22,11 +24,12 @@ void add_persistence_plugin(
     multipart_abort_fn abort_fn,
     multipart_list_parts_fn list_parts_fn,
     multipart_list_uploads_fn list_uploads_fn,
+    multipart_path_from_id_fn get_path_fn,
     store_key_value_fn store_key_fn,
     get_key_value_fn get_value_fn)
 {
     active_persistence_plugin = persistence_plugin{
-        create_fn, complete_fn, abort_fn, list_parts_fn, list_uploads_fn, store_key_fn, get_value_fn};
+        create_fn, complete_fn, abort_fn, list_parts_fn, list_uploads_fn, get_path_fn, store_key_fn, get_value_fn};
 }
 
 void free_multipart_result(multipart_listing_output* c)
@@ -72,19 +75,37 @@ namespace irods::s3
     bool abort_multipart_upload(rcComm_t* connection, const std::string_view& path)
     {
     }
+
     std::optional<std::string>
     create_part(rcComm_t* connection, const std::string_view& upload_id, const std::string_view& part)
     {
+        char* path;
+        if (!active_persistence_plugin.get_path_fn(connection, upload_id, &path)) {
+            return std::nullopt;
+        }
+        auto ret = irods::s3::multipart::utilities::get_temporary_file(path, part);
+        free(path);
+        return ret;
     }
 
-    std::vector<std::string> list_multipart_upload_parts(rcComm_t* connection, const std::string_view& path)
+    std::vector<std::string> list_multipart_upload_parts(rcComm_t* connection, const std::string_view& upload_id)
     {
-        multipart_listing_output* stuff;
-        size_t stuff_count;
-        active_persistence_plugin.list_uploads_fn(connection, &stuff, &stuff_count);
+        // Careful listeners may have noticed that you can almost certainly avoid using the persistence plugin at all.
+        //
+        char** parts;
+        size_t part_count;
+        active_persistence_plugin.list_parts_fn(connection, upload_id.data(), &stuff_count, &parts);
+        std::vector<std::string> results;
+        for (size_t i = 0; i < part_count; i++) {
+            char* c = parts[i];
+            results.emplace_back(c);
+            free(c); // Watch this space, it might explode
+        }
+        free(parts);
+        return results;
     }
 
-    std::vector<std::string> list_multipart_uploads(rcComm_t* connection, const std::string_view& path)
+    std::vector<std::string> list_multipart_uploads(rcComm_t* connection)
     {
     }
 } //namespace irods::s3
