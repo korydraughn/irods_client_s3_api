@@ -172,7 +172,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
         case boost::beast::http::verb::head:
             // Probably just headbucket and headobject here.
             // and headbucket isn't on the immediate list
-            // of starting point.
+            // of endpoints.
             if (url.segments().empty()) {
                 std::cout << "Headbucket detected" << std::endl;
             }
@@ -233,21 +233,32 @@ int main()
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
     {
-        auto config = R"({"name":"static_bucket_resolver", "mappings": {"wow": "/tempZone/home/rods/wow/"}})"_json;
+        std::ifstream configuration_file("config.json");
+        nlohmann::json config_value;
+        configuration_file >> config_value;
         auto i = irods::s3::get_connection();
-        irods::s3::plugins::load_plugin(*i, "static_bucket_resolver", config);
+        for (const auto& [k, v] : config_value["plugins"].items()) {
+            std::cout << "Loading plugin " << k << std::endl;
+            irods::s3::plugins::load_plugin(*i, k, v);
+        }
     }
-    {
-        auto config =
-            R"({"name":"static_authentication_resolver", "users": {"no": {"username":"rods","secret_key":"heck"}}})"_json;
-        auto i = irods::s3::get_connection();
-        irods::s3::plugins::load_plugin(*i, "static_authentication_resolver", config);
-    }
-    {
-        auto config = R"({})"_json;
-        auto i = irods::s3::get_connection();
-        irods::s3::plugins::load_plugin(*i, "sqlite_persistence_plugin", config);
-    }
+    //    {
+    //        auto config = R"({"name":"static_bucket_resolver", "mappings": {"wow":
+    //        "/tempZone/home/rods/wow/"}})"_json; auto i = irods::s3::get_connection();
+    //        irods::s3::plugins::load_plugin(*i, "static_bucket_resolver", config);
+    //    }
+    //    {
+    //        auto config =
+    //            R"({"name":"static_authentication_resolver", "users": {"no":
+    //            {"username":"rods","secret_key":"heck"}}})"_json;
+    //        auto i = irods::s3::get_connection();
+    //        irods::s3::plugins::load_plugin(*i, "static_authentication_resolver", config);
+    //    }
+    //    {
+    //        auto config = R"({})"_json;
+    //        auto i = irods::s3::get_connection();
+    //        irods::s3::plugins::load_plugin(*i, "sqlite_persistence_plugin", config);
+    //    }
 
     asio::io_context io_context(1);
     auto address = asio::ip::make_address("0.0.0.0");

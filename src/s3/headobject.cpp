@@ -3,6 +3,7 @@
 //
 #include "./s3_api.hpp"
 #include "../authentication.hpp"
+#include "../bucket.hpp"
 
 namespace asio = boost::asio;
 namespace beast = boost::beast;
@@ -14,7 +15,6 @@ boost::asio::awaitable<void> irods::s3::actions::handle_headobject(
     const boost::urls::url_view& url)
 {
     auto thing = irods::s3::get_connection();
-    auto url = boost::urls::url_view(parser.get().base().target());
     beast::http::response<beast::http::empty_body> response;
     if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
         response.result(beast::http::status::forbidden);
@@ -30,7 +30,7 @@ boost::asio::awaitable<void> irods::s3::actions::handle_headobject(
             response.result(boost::beast::http::status::ok);
         }
         else {
-            response.result(boost::beast::http::status::not_found)
+            response.result(boost::beast::http::status::not_found);
         }
     }
     beast::http::write(socket, response);

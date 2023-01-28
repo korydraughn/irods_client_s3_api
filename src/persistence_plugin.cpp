@@ -80,7 +80,7 @@ namespace irods::s3
     create_part(rcComm_t* connection, const std::string_view& upload_id, const std::string_view& part)
     {
         char* path;
-        if (!active_persistence_plugin.get_path_fn(connection, upload_id, &path)) {
+        if (!active_persistence_plugin.get_path_fn(connection, upload_id.data(), &path)) {
             return std::nullopt;
         }
         auto ret = irods::s3::multipart::utilities::get_temporary_file(path, part);
@@ -94,7 +94,7 @@ namespace irods::s3
         //
         char** parts;
         size_t part_count;
-        active_persistence_plugin.list_parts_fn(connection, upload_id.data(), &stuff_count, &parts);
+        active_persistence_plugin.list_parts_fn(connection, upload_id.data(), &part_count, &parts);
         std::vector<std::string> results;
         for (size_t i = 0; i < part_count; i++) {
             char* c = parts[i];

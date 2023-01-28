@@ -61,14 +61,14 @@ typedef bool (*get_key_value_fn)(const char* key, size_t key_length, char** valu
 #ifdef BRIDGE_PLUGIN
 extern
 #endif
-    void
-    add_persistence_plugin(
+    void add_persistence_plugin(
         multipart_create_fn,
         multipart_complete_fn,
         multipart_abort_fn,
         multipart_list_parts_fn,
         multipart_list_uploads_fn,
-        multipart_path_from_id_fn store_key_value_fn,
+        multipart_path_from_id_fn,
+        store_key_value_fn,
         get_key_value_fn);
 
 /// Free a multipart listing from memory

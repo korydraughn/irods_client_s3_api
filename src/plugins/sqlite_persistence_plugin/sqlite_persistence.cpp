@@ -292,13 +292,12 @@ namespace
     bool get_path(rcComm_t* connection, sqlite3* db, const char* upload_id, char** path)
     {
         sqlite3_stmt* select_path;
-        int ec =
-            sqlite3_prepare_v2(db, "SELECT * FROM multipart_uploads where id = ?", -1, &select_path, nullptr, nullptr);
+        int ec = sqlite3_prepare_v2(db, "SELECT * FROM multipart_uploads where id = ?", -1, &select_path, nullptr);
         if (ec != SQLITE_OK) {
         }
         sqlite3_bind_text(select_path, 0, upload_id, -1, nullptr);
         for (int rc = sqlite3_step(select_path); rc != SQLITE_DONE; rc = sqlite3_step(select_path)) {
-            *path = strdup(sqlite3_column_text(select_path, 0));
+            *path = strdup((const char*) sqlite3_column_text(select_path, 0));
             sqlite3_finalize((select_path));
             return true;
         }
@@ -397,7 +396,8 @@ extern "C" void plugin_initialize(rcComm_t* connection, const char* config)
         },
         [](rcComm_t* connection, const char* upload_id, char** path) {
             return get_path(connection, initialize_db(), upload_id, path);
-        }[](const char* key, size_t key_length, const char* value, size_t value_length) {
+        },
+        [](const char* key, size_t key_length, const char* value, size_t value_length) {
             return store_key_value(initialize_db(), key, key_length, value, value_length);
         },
         [](const char* key, size_t key_length, char** value, size_t* value_length) {

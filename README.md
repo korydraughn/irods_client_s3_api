@@ -5,18 +5,18 @@ We will implement a subset of the S3 API:
   - https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations.html
 
 Initial effort to include:
-  - CopyObject
+  - [ ] CopyObject
   - CompleteMultipartUpload
   - CreateMultipartUpload
-  - DeleteObject
+  - [x] DeleteObject
   - DeleteObjects
-  - GetObject
-  - GetObjectAcl ?
-  - GetObjectTagging
-  - HeadObject
+  - [x] GetObject
+  - GetObjectAcl ? (Mapping the needs of S3 access control versus the iRODS access control is complicated)
+  - GetObjectTagging (The way this translates into AVUs is also not entirely clear)
+  - [x] HeadObject
   - ListObjects ?
-  - ListObjectsV2
-  - PutObject
+  - [x] ListObjectsV2
+  - [x] PutObject
   - PutObjectAcl ?
   - PutObjectTagging
   - UploadPart
