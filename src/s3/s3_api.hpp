@@ -33,4 +33,9 @@ namespace irods::s3::actions
         boost::asio::ip::tcp::socket& socket,
         static_buffer_request_parser& parser,
         const boost::urls::url_view& url);
+
+    boost::asio::awaitable<void> handle_headobject(
+        boost::asio::ip::tcp::socket& socket,
+        static_buffer_request_parser& parser,
+        const boost::urls::url_view& url);
 } //namespace irods::s3::actions

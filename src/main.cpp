@@ -178,6 +178,8 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
             }
             else {
                 std::cout << "Headobject detected" << std::endl;
+                co_await irods::s3::actions::handle_headobject(socket, parser, url);
+                co_return;
             }
             break;
             /*
@@ -223,7 +225,6 @@ asio::awaitable<void> listener()
 
 // TODO allow specifying the target resource. That is necessary for efficiently avoiding weird things whenever
 // we get around to multipart upload handling.
-
 
 int main()
 {
