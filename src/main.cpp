@@ -232,9 +232,10 @@ int main()
     irods::api_entry_table& api_tbl = irods::get_client_api_table();
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
+    nlohmann::json config_value;
     {
         std::ifstream configuration_file("config.json");
-        nlohmann::json config_value;
+
         configuration_file >> config_value;
         auto i = irods::s3::get_connection();
         for (const auto& [k, v] : config_value["plugins"].items()) {
@@ -242,25 +243,12 @@ int main()
             irods::s3::plugins::load_plugin(*i, k, v);
         }
     }
-    //    {
-    //        auto config = R"({"name":"static_bucket_resolver", "mappings": {"wow":
-    //        "/tempZone/home/rods/wow/"}})"_json; auto i = irods::s3::get_connection();
-    //        irods::s3::plugins::load_plugin(*i, "static_bucket_resolver", config);
-    //    }
-    //    {
-    //        auto config =
-    //            R"({"name":"static_authentication_resolver", "users": {"no":
-    //            {"username":"rods","secret_key":"heck"}}})"_json;
-    //        auto i = irods::s3::get_connection();
-    //        irods::s3::plugins::load_plugin(*i, "static_authentication_resolver", config);
-    //    }
-    //    {
-    //        auto config = R"({})"_json;
-    //        auto i = irods::s3::get_connection();
-    //        irods::s3::plugins::load_plugin(*i, "sqlite_persistence_plugin", config);
-    //    }
+    // TODO set resource from config
+    // TODO set port from config
 
-    asio::io_context io_context(1);
+    asio::io_context io_context(
+        config_value.find("threads") != config_value.end() ? config_value["threads"].get<int>()
+                                                           : 3 * (std::thread::hardware_concurrency() + 1));
     auto address = asio::ip::make_address("0.0.0.0");
     asio::signal_set signals(io_context, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto) { io_context.stop(); });
