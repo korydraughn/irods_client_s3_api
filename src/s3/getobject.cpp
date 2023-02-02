@@ -79,7 +79,8 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
 
             beast::error_code ec;
             irods::experimental::io::client::default_transport xtrans{*thing};
-            irods::experimental::io::idstream d{xtrans, path};
+            irods::experimental::io::idstream d{
+                xtrans, path, irods::experimental::io::root_resource_name{irods::s3::get_resource()}};
 
             if (d.fail() || d.bad()) {
                 std::cout << "Fail/badbit set" << std::endl;

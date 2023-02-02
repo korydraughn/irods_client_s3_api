@@ -232,6 +232,10 @@ int main()
     irods::api_entry_table& api_tbl = irods::get_client_api_table();
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
+
+    // This is where the configuration file is loaded and everything is set up.
+    // It should not be hard to move this to a new function wherever you like should you find that
+    // more palatable.
     nlohmann::json config_value;
     {
         std::ifstream configuration_file("config.json");
@@ -241,6 +245,9 @@ int main()
         for (const auto& [k, v] : config_value["plugins"].items()) {
             std::cout << "Loading plugin " << k << std::endl;
             irods::s3::plugins::load_plugin(*i, k, v);
+        }
+        if (config_value.find("resource") != config_value.end()) {
+            irods::s3::set_resource(config_value.find("resource").get<std::string>());
         }
     }
     // TODO set resource from config

@@ -5,7 +5,7 @@ We will implement a subset of the S3 API:
   - https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations.html
 
 Initial effort to include:
-  - [ ] CopyObject
+  - [x] CopyObject
   - CompleteMultipartUpload
   - CreateMultipartUpload
   - [x] DeleteObject

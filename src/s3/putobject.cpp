@@ -5,11 +5,9 @@
 #include "../bucket.hpp"
 
 #include <boost/beast/core/error.hpp>
-#include <boost/beast/core/flat_static_buffer.hpp>
-#include <boost/beast/core/static_buffer.hpp>
+
 #include <boost/beast/http/empty_body.hpp>
 #include <boost/beast/http/read.hpp>
-#include <boost/beast/http/string_body.hpp>
 #include <irods/dstream.hpp>
 #include <irods/transport/default_transport.hpp>
 
@@ -19,6 +17,8 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "UnusedValue"
 asio::awaitable<void> irods::s3::actions::handle_putobject(
     asio::ip::tcp::socket& socket,
     static_buffer_request_parser& parser,
@@ -64,7 +64,9 @@ asio::awaitable<void> irods::s3::actions::handle_putobject(
         response.result(beast::http::status::ok);
 
         irods::experimental::io::client::default_transport xtrans{*connection};
-        irods::experimental::io::odstream d{xtrans, path};
+
+        irods::experimental::io::odstream d{
+            xtrans, path, irods::experimental::io::root_resource_name{irods::s3::get_resource()}, std::ios_base::out};
         char buf[4096];
         parser.get().body().data = buf;
         parser.get().body().size = sizeof(buf);
@@ -103,3 +105,4 @@ asio::awaitable<void> irods::s3::actions::handle_putobject(
     }
     co_return;
 }
+#pragma clang diagnostic pop

@@ -37,6 +37,9 @@ boost::asio::awaitable<void> irods::s3::actions::handle_copyobject(
         destination_path = irods::s3::finish_path(bucket.value(), url.segments());
         succeeds &= true;
     }
+    else {
+        std::cerr << "Could not locate destination path" << std::endl;
+    }
     if (!succeeds) {
         beast::http::response<beast::http::empty_body> response;
         response.result(beast::http::status::not_found);
@@ -46,6 +49,8 @@ boost::asio::awaitable<void> irods::s3::actions::handle_copyobject(
     fs::client::copy(*thing, source_path, destination_path);
     std::cerr << "Copied object!" << std::endl;
     // We don't have real etags, so the md5 here would be confusing, as it would match any number of distinct objects
+    // The most accurate representation of an Etag that I am aware of that we can get "for free" is using the md5
+    // sum appended to the path of the object. This makes it both content-sensitive and location sensitive.
     beast::http::response<beast::http::string_body> response;
     response.body() = "<CopyObjectResult></CopyObjectResult>";
     beast::http::write(socket, response);

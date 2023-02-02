@@ -19,12 +19,13 @@ class CopyObject_Test(unittest.TestCase):
 
     def test_copy_succeeds(self):
         """
-        Tests that that putobject works properly in the successful case.
+        Tests that copyobject works properly in the successful case.
         """
 
         OBJECT_PATH = "something"
-        OBJECT_KEY = "test/something"
-        OBJECT_KEY2 = "test/something3"
+        OBJECT_PATH2 = OBJECT_PATH + "3"
+        OBJECT_KEY = "test/" + OBJECT_PATH
+        OBJECT_KEY2 = "test/" + OBJECT_PATH2
         self.client.put_object(
             Key=OBJECT_KEY, Body=b"this should succeed", Bucket="wow")
         self.assertEqual(read_file(self.client, OBJECT_KEY)["Body"].read(),
