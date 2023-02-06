@@ -36,7 +36,6 @@ def mkdir(dirname, access_level=None):
     if access_level is not None:
         set_access(BUCKET_PATH+dirname, access_level, recursive=True)
 
-
 def remove_file(client, filename, recursive: bool = False):
     """
     Remove a file or directory

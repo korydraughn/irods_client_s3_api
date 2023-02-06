@@ -6,6 +6,8 @@
 #include <boost/beast.hpp>
 #include <boost/property_tree/ptree_fwd.hpp>
 
+#include <irods/irods_exception.hpp>
+
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
@@ -46,7 +48,22 @@ boost::asio::awaitable<void> irods::s3::actions::handle_copyobject(
         beast::http::write(socket, response);
         co_return;
     }
-    fs::client::copy(*thing, source_path, destination_path);
+    try {
+        fs::client::copy(*thing, source_path, destination_path);
+    }catch(irods::exception& ex){
+        beast::http::response<beast::http::empty_body> response;
+        switch(ex.code()){
+            case USER_ACCESS_DENIED:
+            case CAT_NO_ACCESS_PERMISSION:
+                response.result(beast::http::status::forbidden);
+                break;
+            default:
+                response.result(beast::http::status::internal_server_error);
+                break;
+        }
+        beast::http::write(response);
+        co_return;
+    }
     std::cerr << "Copied object!" << std::endl;
     // We don't have real etags, so the md5 here would be confusing, as it would match any number of distinct objects
     // The most accurate representation of an Etag that I am aware of that we can get "for free" is using the md5
