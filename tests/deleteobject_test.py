@@ -19,10 +19,14 @@ class TestDeleteObject(unittest.TestCase):
     def test_permission(self):
         try:
             mkdir("unavailable", access_level="own")
-            touch_file("unavailable/hello", access_level="none")
+            touch_file("unavailable/hello", access_level="read_metadata")
             self.assertRaises(Exception,
                               lambda: self.client.delete_object(Bucket="wow", Key="test/unavailable/hello"))
+            set_access("unavailable/hello", "own")
+            self.client.delete_object(Bucket="wow", Key="test/unavailable/hello")
+            self.assertRaises(Exception, lambda: read_file(self.client, "unavailable/hello"))
         finally:
+            set_access("unavailable", "own", recursive=True)
             remove_file(self.client, "unavailable", recursive=True)
 
     def tearDown(self) -> None:

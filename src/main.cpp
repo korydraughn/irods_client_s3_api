@@ -151,6 +151,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
             if (parser.get().find("x-amz-copy-source") != parser.get().end()) {
                 // copyobject
                 std::cout << "Copyobject detected" << std::endl;
+                co_await irods::s3::actions::handle_copyobject(socket, parser, url);
             }
             else {
                 // putobject
@@ -247,7 +248,7 @@ int main()
             irods::s3::plugins::load_plugin(*i, k, v);
         }
         if (config_value.find("resource") != config_value.end()) {
-            irods::s3::set_resource(config_value.find("resource").get<std::string>());
+            irods::s3::set_resource(config_value.value<std::string>("resource", ""));
         }
     }
     // TODO set resource from config

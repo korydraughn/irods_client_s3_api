@@ -65,17 +65,24 @@ asio::awaitable<void> irods::s3::actions::handle_deleteobject(
     std::cout << "Requested " << path << std::endl;
 
     try {
-        if (fs::client::exists(*thing, path)) {
-            fs::client::remove(*thing, path, experimental::filesystem::remove_options::no_trash);
+        if (fs::client::exists(*thing, path) && not fs::client::is_collection(*thing, path)) {
             beast::http::response<beast::http::empty_body> response;
-            response.result(beast::http::status::ok);
-            std::cerr << "Could not find file" << std::endl;
+            if (fs::client::remove(*thing, path, experimental::filesystem::remove_options::no_trash)) {
+                std::cerr << "Supposedly " << path << " doesn't exist anymore" << std::endl;
+                response.result(beast::http::status::ok);
+            }
+            else {
+                response.result(beast::http::status::forbidden);
+            }
             beast::http::write(socket, response);
+        }
+        else {
+            std::cerr << "Could not find file" << path << std::endl;
         }
     }
     catch (irods::exception& e) {
         beast::http::response<beast::http::empty_body> response;
-        std::cout << "Exception! in the getobject" << std::endl;
+        std::cout << "Exception! in the deleteobject" << std::endl;
         response.result(beast::http::status::forbidden);
 
         switch (e.code()) {
@@ -84,6 +91,9 @@ asio::awaitable<void> irods::s3::actions::handle_deleteobject(
                 response.result(beast::http::status::forbidden);
                 break;
             default:
+                // Relevant ones here are SYS_INVALID_INPUT_PARAM,
+                // CAT_NOT_A_DATA_OBJ_AND_NOT_A_COLLECTION,
+                // SAME_SRC_DEST_PATHS_ERR
                 response.result(beast::http::status::internal_server_error);
                 break;
         }
@@ -91,9 +101,8 @@ asio::awaitable<void> irods::s3::actions::handle_deleteobject(
         beast::http::write(socket, response);
         co_return;
     }
-    catch (std::exception& e) {
+    catch (...) {
         std::cout << boost::stacktrace::stacktrace() << std::endl;
-        std::cout << "error! " << e.what() << std::endl;
     }
     co_return;
 }

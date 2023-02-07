@@ -1,5 +1,6 @@
 #include "authentication.hpp"
 #include "hmac.hpp"
+#include <algorithm>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -61,7 +62,8 @@ namespace
 
     bool should_include_header(const std::string_view& sv)
     {
-        return sv.starts_with("X-Amz") || sv == "Host" || sv == "Content-Type" || sv == "Content-MD5";
+        return sv.starts_with("X-Amz") || sv.starts_with("x-amz") || sv == "Host" || sv == "Content-Type" ||
+               sv == "Content-MD5";
     }
 
     std::string canonicalize_request(
@@ -109,7 +111,22 @@ namespace
 
         // Produce the 'canonical headers'
 
-        std::sort(sorted_fields.begin(), sorted_fields.end());
+        // They mix cases of headers :)
+        // I hate it
+        std::sort(sorted_fields.begin(), sorted_fields.end(), [](const auto& lhs, const auto& rhs) {
+            const auto result = std::mismatch(
+                lhs.cbegin(),
+                lhs.cend(),
+                rhs.cbegin(),
+                rhs.cend(),
+                [](const unsigned char lhs, const unsigned char rhs) { return tolower(lhs) == tolower(rhs); });
+
+            return result.second != rhs.cend() &&
+                   (result.first == lhs.cend() || tolower(*result.first) < tolower(*result.second));
+        });
+        for (auto& i : sorted_fields)
+            std::cerr << i << ",";
+        std::cerr << std::endl;
         for (const auto& field : sorted_fields) {
             auto val = request.get().at(boost::string_view(field.data(), field.length())).to_string();
             std::string key(field);
@@ -211,7 +228,7 @@ bool irods::s3::authentication::authenticates(
     auto computed_signature = hex_encode(hmac_sha_256(signing_key, sts));
 
     if (auto error = rc_switch_user(&conn, irods_user.c_str(), conn.clientUser.rodsZone)) {
-        std::cout << "Faied to switch users! code [" <<error<<"]"<< std::endl;
+        std::cout << "Faied to switch users! code [" << error << "]" << std::endl;
     }
 
     std::cout << "Computed: [" << computed_signature << "]";

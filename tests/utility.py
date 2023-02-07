@@ -34,13 +34,11 @@ def read_file(client, filename):
 def mkdir(dirname, access_level=None):
     sp.run(['imkdir', '-p', BUCKET_PATH+dirname], check=True)
     if access_level is not None:
-        set_access(BUCKET_PATH+dirname, access_level, recursive=True)
+        set_access(dirname, access_level, recursive=True)
 
 def remove_file(client, filename, recursive: bool = False):
     """
     Remove a file or directory
     """
-    sp.run(['irm'] + ([] if recursive else ['-r']) +
+    sp.run(['irm'] + (["-r"] if recursive else []) +
            [f'{BUCKET_PATH}{filename}{"/" if recursive else ""}'])
-    if recursive:
-        sp.run(['irmdir', f'{BUCKET_PATH}{filename}'])
