@@ -12,12 +12,15 @@ namespace irods::s3::plugins
     {
         auto i = fmt::format("lib{}.so", plugin_name);
         void* plugin_handle = dlopen(i.c_str(), RTLD_LAZY | RTLD_LOCAL);
+        if (plugin_handle == nullptr) {
+            std::cerr << "Plugin library " << std::quoted(i) << " was not found by the linker" << std::endl;
+        }
         void (*init)(rcComm_t*, const char*);
 
         // I love C :3
         *(void**) (&init) = dlsym(plugin_handle, "plugin_initialize");
         if (init == nullptr) {
-            std::cerr << "Plugin library" << std::quoted(i)
+            std::cerr << "Plugin library " << std::quoted(i)
                       << " does not contain an exported 'plugin_initialize' symbol." << std::endl;
         }
         auto dump = configuration.dump();
