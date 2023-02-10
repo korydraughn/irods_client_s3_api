@@ -47,13 +47,13 @@ class CopyObject_Test(unittest.TestCase):
         OBJECT_PATH2 = OBJECT_PATH + "3"
         OBJECT_KEY = "test/" + OBJECT_PATH
         OBJECT_KEY2 = "test/" + OBJECT_PATH2
-        remove_file(self.client,OBJECT_PATH2)
+        remove_file(self.client, OBJECT_PATH2)
         self.client.put_object(
             Key=OBJECT_KEY, Body=b"this should *not* succeed", Bucket="wow")
         set_access(OBJECT_PATH, "null")
         self.assertRaises(Exception,
                           lambda: self.client.copy_object(CopySource={"Bucket": "wow", "Key": OBJECT_KEY}, Bucket="wow",
                                                           Key=OBJECT_KEY2))
-        # set_access("", "own", recursive=True)
-        # remove_file(self.client, OBJECT_PATH)
-        # remove_file(self.client, OBJECT_PATH + '3')
+        set_access("", "own", recursive=True)
+        remove_file(self.client, OBJECT_PATH)
+        remove_file(self.client, OBJECT_PATH + '3')

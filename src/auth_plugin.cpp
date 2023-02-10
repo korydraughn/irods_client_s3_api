@@ -1,8 +1,10 @@
 #include "./auth_plugin.h"
+#include "authentication.hpp"
+#include "./plugin.hpp"
+
 #include <optional>
 #include <vector>
 #include <string>
-#include "authentication.hpp"
 
 namespace
 {
@@ -33,6 +35,11 @@ void add_authentication_plugin(
         create_user_function,
         delete_user_function,
         user_exists};
+}
+
+bool irods::s3::plugins::authentication_plugin_loaded()
+{
+    return active_authentication_plugin.get_iRODS_user != nullptr;
 }
 
 bool irods::s3::authentication::delete_user(rcComm_t& connection, const std::string_view& username)
@@ -83,5 +90,5 @@ std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm
     if (!active_authentication_plugin.secret_key(conn, user.data(), secret_key)) {
         return std::nullopt;
     }
-    return std::string(secret_key) ;
+    return std::string(secret_key);
 }

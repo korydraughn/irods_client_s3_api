@@ -55,8 +55,9 @@ boost::asio::awaitable<void> irods::s3::actions::handle_copyobject(
     }
     catch (irods::experimental::filesystem::filesystem_error& ex) {
         beast::http::response<beast::http::empty_body> response;
-        std::cerr << "\n\n\n\n\n" << ex.what() << std::endl;
         switch (ex.code().value()) {
+                // It's funny that it uses iRODS codes here in what seems likely to have been meant for
+                // things like ENOFILE or EPERM
             case USER_ACCESS_DENIED:
             case CAT_NO_ACCESS_PERMISSION:
                 response.result(beast::http::status::forbidden);

@@ -213,19 +213,17 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
     co_return;
 }
 
+unsigned short port = 8080;
 asio::awaitable<void> listener()
 {
     auto executor = co_await this_coro::executor;
-    asio::ip::tcp::acceptor acceptor(executor, {asio::ip::tcp::v4(), 8080});
+    asio::ip::tcp::acceptor acceptor(executor, {asio::ip::tcp::v4(), port});
     for (;;) {
         asio::ip::tcp::socket socket = co_await acceptor.async_accept(boost::asio::use_awaitable);
         asio::co_spawn(executor, handle_request(std::move(socket)), asio::detached);
         std::cout << "Accepted?" << std::endl;
     }
 }
-
-// TODO allow specifying the target resource. That is necessary for efficiently avoiding weird things whenever
-// we get around to multipart upload handling.
 
 int main()
 {
@@ -239,6 +237,12 @@ int main()
     // more palatable.
     nlohmann::json config_value;
     {
+        if (!std::filesystem::exists("config.json")) {
+            std::cout
+                << "You need to create config.json and populate it with an authentication plugin and a bucket plugin"
+                << std::endl;
+            return 1;
+        }
         std::ifstream configuration_file("config.json");
 
         configuration_file >> config_value;
@@ -250,9 +254,31 @@ int main()
         if (config_value.find("resource") != config_value.end()) {
             irods::s3::set_resource(config_value.value<std::string>("resource", ""));
         }
+        port = config_value.value("port", 8080);
+
+        if (!irods::s3::plugins::authentication_plugin_loaded()) {
+            std::cout
+                << "No authentication plugin is specified or loaded" << std::endl
+                << "Consider setting up the static_authentication_plugin, add a section like" << std::endl
+                << R"("static_authentication_resolver": {)"
+                   R"(""name": "static_authentication_resolver",)"
+                   R"(""users": {"<The s3 username>": {"username": "<The iRODS username>","secret_key": "<your favorite secret key>"}})"
+                   "}"
+                << std::endl
+                << "to the 'plugins' object in your config.json" << std::endl;
+        }
+        if (!irods::s3::plugins::bucket_plugin_loaded()) {
+            std::cout << "No bucket resolution plugin is specified or loaded" << std::endl
+                      << "Consider setting up the static_authentication_plugin, add a section like" << std::endl
+                      << R"("static_bucket_resolver": {)"
+                         R"("name": "static_bucket_resolver",)"
+                         R"("mappings": {)"
+                         R"(<Your Bucket's name>": "<The root of your bucket in irods>")"
+                         "}"
+                      << std::endl
+                      << "to the 'plugins' object in your config.json" << std::endl;
+        }
     }
-    // TODO set resource from config
-    // TODO set port from config
 
     asio::io_context io_context(
         config_value.find("threads") != config_value.end() ? config_value["threads"].get<int>()

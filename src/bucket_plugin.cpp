@@ -1,5 +1,6 @@
 #include "./bucket_plugin.h"
 #include "./bucket.hpp"
+#include "./plugin.hpp"
 
 #include <stdexcept>
 #include <unordered_map>
@@ -37,6 +38,11 @@ extern "C" void add_bucket_plugin(
     bucket_list_function list_f)
 {
     active_bucket_plugin = bucket_plugin{creation_f, resolution_f, reversal_f, deletion_f, list_f};
+}
+
+bool irods::s3::plugins::bucket_plugin_loaded()
+{
+    return active_bucket_plugin.resolve != nullptr;
 }
 
 int create_bucket(rcComm_t* connection, const char* name)
