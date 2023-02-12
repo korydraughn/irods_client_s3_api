@@ -75,9 +75,9 @@ boost::asio::awaitable<void> irods::s3::actions::handle_copyobject(
         std::cerr << "Something happened" << std::endl;
     }
     std::cerr << "Copied object!" << std::endl;
-    // We don't have real etags, so the md5 here would be confusing, as it would match any number of distinct objects
-    // The most accurate representation of an Etag that I am aware of that we can get "for free" is using the md5
-    // sum appended to the path of the object. This makes it both content-sensitive and location sensitive.
+    // We don't have real etags, so using the md5 here would be confusing, as it would match any number of distinct
+    // objects The most accurate representation of an Etag that I am aware of that we can get "for free" is using the
+    // md5 sum appended to the path of the object. This makes it both content-sensitive and location sensitive.
     beast::http::response<beast::http::string_body> response;
     response.body() = "<CopyObjectResult/>";
     beast::http::write(socket, response);

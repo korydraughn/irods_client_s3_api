@@ -15,11 +15,13 @@ class PutObject_Test(unittest.TestCase):
                                             endpoint_url="http://127.0.0.1:8080",  # normal networking stuff :p
                                             aws_access_key_id="no",
                                             aws_secret_access_key="heck")
-        set_access("", 'own',recursive=True)
+        set_access("", 'own', recursive=True)
         mkdir("", access_level="own")
 
     def tearDown(self):
+        set_access("", "own", recursive=True)
         remove_file(self.client, '', recursive=True)
+        self.client.close()
 
     def test_put_succeeds(self):
         """
@@ -43,8 +45,8 @@ class PutObject_Test(unittest.TestCase):
         # it should return a 403 status code if it cannot write.
         OBJECT_PATH = "something"
         OBJECT_KEY = "test/something"
-        set_access('','read_metadata', recursive=True)
-        self.assertRaises(Exception,  
+        set_access('', 'read_metadata', recursive=True)
+        self.assertRaises(Exception,
                           lambda: self.client.put_object(
                               Key=OBJECT_KEY, Body=b"this should fail", Bucket="wow"))
         set_access('', 'own', recursive=True)

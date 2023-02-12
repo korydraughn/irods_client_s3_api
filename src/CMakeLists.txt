@@ -1,5 +1,4 @@
-target_sources(irods_s3_bridge PRIVATE main.cpp connection.cpp persistence_plugin.cpp
-               event_loop.cpp hmac.cpp #bucket.cpp
+target_sources(irods_s3_bridge PRIVATE main.cpp connection.cpp persistence_plugin.cpp hmac.cpp
                authentication.cpp bucket_plugin.cpp
                multipart.cpp
                auth_plugin.cpp

@@ -1,25 +1,15 @@
 #include "./authentication.hpp"
-#include "./event_loop.hpp"
 #include "./hmac.hpp"
-#include "./bucket.hpp"
-#include "boost/url/param.hpp"
+
 #include "boost/url/url.hpp"
 #include "boost/url/url_view.hpp"
 #include "./connection.hpp"
-#include "./types.hpp"
 #include "plugin.hpp"
 #include "s3/s3_api.hpp"
 
-#include <algorithm>
-#include <boost/algorithm/string/classification.hpp>
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/trim.hpp>
-#include <boost/asio/buffer.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/detached.hpp>
-#include <boost/asio/detail/descriptor_ops.hpp>
-#include <boost/asio/detail/socket_ops.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/ip/address.hpp>
@@ -27,69 +17,22 @@
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/http/buffer_body.hpp>
-#include <boost/beast/http/detail/type_traits.hpp>
-#include <boost/beast/http/dynamic_body.hpp>
-#include <boost/beast/http/empty_body.hpp>
 #include <boost/beast/http/error.hpp>
 #include <boost/beast/http/fields.hpp>
-#include <boost/beast/http/message.hpp>
 #include <boost/beast/http/parser.hpp>
 #include <boost/beast/http/read.hpp>
-#include <boost/beast/http/status.hpp>
-#include <boost/property_tree/detail/xml_parser_writer_settings.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/xml_parser.hpp>
-
 #include <boost/stacktrace.hpp>
-
-#include <boost/beast/http/serializer.hpp>
-#include <boost/beast/http/string_body.hpp>
-#include <boost/beast/http/type_traits.hpp>
-
 #include <boost/beast/http/verb.hpp>
-#include <boost/beast/http/write.hpp>
-#include <boost/stacktrace/stacktrace_fwd.hpp>
 #include <boost/system/system_error.hpp>
 #include <boost/url/src.hpp>
-
-#include <chrono>
-#include <ctype.h>
-#include <experimental/coroutine>
 #include <filesystem>
-#include <iomanip>
-#include <ios>
 #include <iostream>
-#include <fstream>
-
-#include <fmt/chrono.h>
-#include <fmt/format.h>
-
-#include <irods/filesystem/collection_entry.hpp>
-#include <irods/filesystem/collection_iterator.hpp>
 #include <irods/filesystem/filesystem.hpp>
-#include <irods/filesystem/filesystem_error.hpp>
-#include <irods/filesystem/path.hpp>
-#include <irods/genQuery.h>
-#include <irods/msParam.h>
-#include <irods/rcConnect.h>
-#include <irods/rodsClient.h>
-#include <irods/client_connection.hpp>
 #include <irods/irods_client_api_table.hpp>
 #include <irods/irods_pack_table.hpp>
-#include <irods/irods_parse_command_line_options.hpp>
-#include <irods/filesystem.hpp>
-#include <irods/rcMisc.h>
 #include <irods/rodsGenQuery.h>
-#include <irods/rodsPath.h>
-#include <irods/dstream.hpp>
-#include <irods/transport/default_transport.hpp>
-#include <irods/irods_query.hpp>
-#include <irods/query_builder.hpp>
-
 #include <memory>
 #include <string_view>
-#include <type_traits>
-#include <unordered_set>
 
 namespace asio = boost::asio;
 namespace this_coro = boost::asio::this_coro;
