@@ -41,7 +41,7 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
     const boost::urls::url_view& url)
 {
     auto thing = irods::s3::get_connection();
-    auto url_and_stuff = boost::urls::url_view(parser.get().base().target());
+
     // Permission verification stuff should go roughly here.
     if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
         beast::http::response<beast::http::empty_body> response;

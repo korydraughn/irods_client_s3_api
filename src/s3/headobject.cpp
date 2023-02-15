@@ -19,7 +19,7 @@ boost::asio::awaitable<void> irods::s3::actions::handle_headobject(
     auto thing = irods::s3::get_connection();
     beast::http::response<beast::http::empty_body> response;
     response.result(beast::http::status::forbidden);
-    // TODO I think the operations in this block can be unwrapped safetly
+    // TODO I think the operations in this block can be unwrapped safely
     try {
         if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
             response.result(beast::http::status::forbidden);
