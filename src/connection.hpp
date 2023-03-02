@@ -1,6 +1,7 @@
 #pragma once
 #include "irods/rcConnect.h"
 #include <iostream>
+#include <memory>
 
 namespace irods::s3
 {

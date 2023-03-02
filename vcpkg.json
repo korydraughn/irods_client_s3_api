@@ -7,7 +7,6 @@
         "boost-asio",
         "boost-beast",
         "boost-algorithm",
-        "nlohmann-json",
-        "openssl"
+        "nlohmann-json"
     ]
 }

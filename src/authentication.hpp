@@ -2,6 +2,7 @@
 
 #include <irods/rcConnect.h>
 #include <string>
+#include <string_view>
 #include <boost/beast.hpp>
 #include "types.hpp"
 #include <boost/url.hpp>

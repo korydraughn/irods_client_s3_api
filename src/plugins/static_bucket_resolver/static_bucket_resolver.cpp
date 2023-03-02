@@ -18,8 +18,6 @@
 #include <fmt/core.h>
 #include <dlfcn.h>
 
-using namespace nlohmann::json_literals;
-
 namespace
 {
     std::unordered_map<std::string, std::string> buckets;

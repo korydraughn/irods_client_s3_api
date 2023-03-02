@@ -128,7 +128,7 @@ namespace
             std::cerr << i << ",";
         std::cerr << std::endl;
         for (const auto& field : sorted_fields) {
-            auto val = request.get().at(boost::string_view(field.data(), field.length())).to_string();
+            auto val = static_cast<std::string>(request.get().at(boost::string_view(field.data(), field.length())));
             std::string key(field);
             std::transform(key.begin(), key.end(), key.begin(), tolower);
             boost::trim(val);

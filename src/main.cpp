@@ -26,6 +26,7 @@
 #include <boost/system/system_error.hpp>
 #include <boost/url/src.hpp>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <irods/filesystem/filesystem.hpp>
 #include <irods/irods_client_api_table.hpp>
@@ -53,7 +54,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
         std::cout << "header: " << field.name_string() << ":" << field.value() << std::endl;
     }
     std::cout << "target: " << parser.get().target() << std::endl;
-    std::string url_string = parser.get().find("Host")->value().to_string() + parser.get().target().to_string();
+    std::string url_string = static_cast<std::string>(parser.get().find("Host")->value()).append(parser.get().target());
     std::cout << "candidate url string is [" << url_string << "]\n";
     boost::urls::url url2;
     auto host = parser.get().find("Host")->value();
@@ -170,7 +171,6 @@ asio::awaitable<void> listener()
 
 int main()
 {
-    using namespace nlohmann::literals;
     irods::api_entry_table& api_tbl = irods::get_client_api_table();
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
