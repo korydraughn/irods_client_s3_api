@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 find_package(IRODS 4.3.0 REQUIRED)
 include(IrodsCXXCompiler)
 include(UseLibCXX)
+include(IrodsExternals)
 project(irods_s3_bridge CXX C)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
