@@ -10,10 +10,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fpermissive>)
 endif()
 add_subdirectory(third-party/hmac_sha256)
+# Boost 1.80 is necessary as boost::urls is broken on older systems.
 find_package(Boost 1.80 CONFIG REQUIRED COMPONENTS system)
 include_directories(${Boost_INCLUDE_DIRS})
 find_package(fmt CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
 #list(APPEND IRODS_COMPILE_DEFINITIONS_PRIVATE "BOOST_ASIO_HAS_STD_INVOKE_RESULT")
 
 add_executable(irods_s3_bridge)
@@ -28,7 +32,7 @@ target_link_libraries(irods_s3_bridge PRIVATE
   irods_client irods_plugin_dependencies 
   irods_common irods_server  
   hmac_sha256 ${CMAKE_DL_LIBS} 
-  nlohmann_json::nlohmann_json)
+  nlohmann_json::nlohmann_json Threads::Threads)
 
 target_include_directories(static_bucket_resolver PRIVATE src)
 target_include_directories(static_authentication_resolver PRIVATE src)
@@ -42,7 +46,7 @@ target_link_libraries(sqlite_persistence_plugin PRIVATE irods_client irods_commo
         ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json fmt::fmt-header-only)
 
 target_include_directories(irods_s3_bridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third-party/url/include third-party/hmac_sha256
-        ${Boost_INCLUDE_DIR})
+        ${Boost_INCLUDE_DIR} )
 target_include_directories(static_authentication_resolver PRIVATE ${Boost_INCLUDE_DIR})
 target_include_directories(static_bucket_resolver PRIVATE ${Boost_INCLUDE_DIR})
 target_include_directories(sqlite_persistence_plugin PRIVATE ${Boost_INCLUDE_DIR})
