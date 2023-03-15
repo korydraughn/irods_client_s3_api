@@ -44,6 +44,7 @@ asio::awaitable<void> irods::s3::actions::handle_getobject(
 
     // Permission verification stuff should go roughly here.
     if (!irods::s3::authentication::authenticates(*thing, parser, url)) {
+        std::cout<<"Authentication failed"<<std::endl;
         beast::http::response<beast::http::empty_body> response;
         response.result(beast::http::status::forbidden);
         beast::http::write(socket, response);

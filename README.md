@@ -63,8 +63,7 @@ Versioning is not supported at this time.
 
 ## Compilation
 
-Ideally, the irods development packages and their dependencies will be sufficient to build this. You may
-however have to set your environmental variables to make sure that they are found when CMake goes looking for them.
+The iRODS documentation is nearly
 
 ## Installation
 
