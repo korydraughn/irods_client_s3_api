@@ -78,7 +78,7 @@ directory the `irods_s3_bridge` executable is executed.
 First you must set up an iRODS client environment, logged into an account
 with administrative permissions(This is not the permission S3 commands operate at)
 
-```json
+```javascript
 {
   "plugins": {
     "static_bucket_resolver": { // Each of these keys corresponds to the plugin's .so file name, minus the 'lib'-prefix

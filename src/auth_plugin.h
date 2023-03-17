@@ -1,5 +1,5 @@
-#ifndef AUTH_PLUGIN_H
-#define AUTH_PLUGIN_H
+#ifndef IRODS_S3_API_AUTH_PLUGIN_H
+#define IRODS_S3_API_AUTH_PLUGIN_H
 #include <stddef.h>
 #include <irods/rcConnect.h>
 
@@ -78,4 +78,4 @@ void add_authentication_plugin(
 #ifdef __cplusplus
 }
 #endif
-#endif
+#endif // IRODS_S3_API_AUTH_PLUGIN_H

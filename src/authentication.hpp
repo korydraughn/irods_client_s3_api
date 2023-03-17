@@ -1,5 +1,5 @@
-#pragma once
-
+#ifndef IRODS_S3_API_AUTHENTICATION_HPP
+#define IRODS_S3_API_AUTHENTICATION_HPP
 #include <irods/rcConnect.h>
 #include <string>
 #include <string_view>
@@ -25,3 +25,4 @@ namespace irods::s3::authentication
     std::optional<std::string> get_user_secret_key(rcComm_t* conn, const std::string_view& user);
     
 } //namespace irods::s3::authentication
+#endif

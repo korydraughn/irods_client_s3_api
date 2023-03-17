@@ -1,5 +1,5 @@
-#pragma once
-
+#ifndef IRODS_S3_API_S3_API_HPP
+#define IRODS_S3_API_S3_API_HPP
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/this_coro.hpp>
 #include <boost/beast.hpp>
@@ -43,3 +43,4 @@ namespace irods::s3::actions
         static_buffer_request_parser& parser,
         const boost::urls::url_view& url);
 } //namespace irods::s3::actions
+#endif

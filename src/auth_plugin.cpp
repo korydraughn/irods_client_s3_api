@@ -53,6 +53,8 @@ bool irods::s3::authentication::user_exists(rcComm_t& connection, const std::str
         active_authentication_plugin.user_exists(&connection, username.data());
     }
     else {
+        // Arbitrary length, can be adjusted without issue. May be necessary to expand the size
+        // should someone with a maximally multilingual plane username with more than 30 graphemes use it.
         char irods_name[50];
         if (active_authentication_plugin.get_iRODS_user(&connection, username.data(), irods_name)) {
             return true;
@@ -77,6 +79,8 @@ bool irods::s3::authentication::create_user(
 }
 std::optional<std::string> irods::s3::authentication::get_iRODS_user(rcComm_t* conn, const std::string_view& user)
 {
+    // Arbitrary length, can be adjusted without issue. May be necessary to expand the size
+    // should someone with a maximally multilingual plane username with more than 30 graphemes use it.
     char username[120];
     if (!active_authentication_plugin.get_iRODS_user(conn, user.data(), username)) {
         return std::nullopt;
@@ -86,6 +90,7 @@ std::optional<std::string> irods::s3::authentication::get_iRODS_user(rcComm_t* c
 
 std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm_t* conn, const std::string_view& user)
 {
+    // Arbitrary length that should fit in the stack in most cases.
     char secret_key[512];
     if (!active_authentication_plugin.secret_key(conn, user.data(), secret_key)) {
         return std::nullopt;

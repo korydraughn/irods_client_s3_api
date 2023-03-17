@@ -1,4 +1,5 @@
-#pragma once
+#ifndef IRODS_S3_API_HMAC_HPP
+#define IRODS_S3_API_HMAC_HPP
 #include <string_view>
 #include <string>
 #include <vector>
@@ -20,3 +21,4 @@ namespace irods::s3::authentication
     /// @param data the data to convert to string
     std::string hex_encode(const std::string_view& data);
 } //namespace irods::s3::authentication
+#endif // IRODS_S3_API_HMAC_HPP
