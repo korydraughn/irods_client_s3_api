@@ -75,7 +75,8 @@ RUN update-alternatives --install /usr/local/bin/gcc gcc /usr/bin/gcc-10 1 && \
 ARG cmake_path="/opt/irods-externals/cmake3.21.4-0/bin"
 ENV PATH=${cmake_path}:$PATH
 
-
+# This is where the dockerfile deviates from the one used by the development environment's docker
+# file
 
 # Build boost 1.81
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.tar.bz2 && \
