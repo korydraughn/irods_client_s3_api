@@ -65,8 +65,10 @@ asio::awaitable<void> irods::s3::actions::handle_putobject(
 
         irods::experimental::io::client::default_transport xtrans{*connection};
 
+        fs::client::create_collections(*connection, path.parent_path());
         irods::experimental::io::odstream d{
             xtrans, path, irods::experimental::io::root_resource_name{irods::s3::get_resource()}, std::ios_base::out};
+
         char buf[4096];
         parser.get().body().data = buf;
         parser.get().body().size = sizeof(buf);

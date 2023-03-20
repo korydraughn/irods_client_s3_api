@@ -1,11 +1,7 @@
 #include "hmac.hpp"
-#include <ios>
-// #include <openssl/hmac.h>
-// #include <openssl/evp.h>
-// #include <openssl/sha.h>
 #include "hmac_sha256.h"
 
-// This is a very slight hack I guess.
+// This is a very slight hack I guess but it is required to compile successfully
 extern "C" {
 #include "sha256.h"
 }

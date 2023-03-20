@@ -126,7 +126,7 @@ namespace
         });
         for (auto& i : sorted_fields)
             std::cerr << i << ",";
-        std::cerr << std::endl;
+        std::cerr << '\n';
         for (const auto& field : sorted_fields) {
             auto val = static_cast<std::string>(request.get().at(boost::string_view(field.data(), field.length())));
             std::string key(field);
@@ -214,12 +214,12 @@ bool irods::s3::authentication::authenticates(
 
     auto canonical_request = canonicalize_request(request, url, signed_headers);
     std::cout << "Canon request==========================" << std::endl;
-    std::cout << canonical_request << std::endl;
+    std::cout << canonical_request << '\n';
     std::cout << "=======================================" << std::endl;
 
     auto sts = string_to_sign(request, url, date, region, canonical_request);
 
-    std::cout << sts << std::endl;
+    std::cout << sts << '\n';
     std::cout << "=========================" << std::endl;
 
     auto irods_user = irods::s3::authentication::get_iRODS_user(&conn, access_key_id).value();

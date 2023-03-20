@@ -82,13 +82,28 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
                 // will be corrected in the future when boost::url is released properly as part
                 // of boost
                 if (f != url.params().end() && (*f).value == "2") {
+                    std::cout << "Listobjects detected" << std::endl;
                     co_await irods::s3::actions::handle_listobjects_v2(socket, parser, url);
                 }
             }
             else {
                 // GetObject
-                std::cout << "getobject detected" << std::endl;
-                co_await irods::s3::actions::handle_getobject(socket, parser, url);
+
+                if (url.params().find("location") != url.params().end() && url.segments().size() > 1) {
+                    // This is GetBucketLocation
+                    std::cout << "GetBucketLocation detected" << std::endl;
+                    beast::http::response<beast::http::string_body> resp;
+                    resp.body() = "<?xml version='1.0' encoding='utf-8'?>"
+                                  "<LocationConstraint>"
+                                  "   <LocationConstraint>a-computer-1</LocationConstraint>"
+                                  "</LocationConstraint>";
+                    co_await beast::http::async_write(socket, resp, asio::use_awaitable);
+                    co_return;
+                }
+                else {
+                    std::cout << "getobject detected" << std::endl;
+                    co_await irods::s3::actions::handle_getobject(socket, parser, url);
+                }
             }
             break;
         case boost::beast::http::verb::put:
@@ -134,9 +149,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
             break;
             */
         default:
-            std::cerr << "Oh no..." << std::endl;
-            exit(37);
-            break;
+            std::cerr << "Someone tried to make an HTTP request with a method that is not yet supported\n";
     }
     char buf[512];
     while (!parser.is_done()) {
@@ -157,8 +170,7 @@ asio::awaitable<void> handle_request(asio::ip::tcp::socket socket)
     co_return;
 }
 
-unsigned short port = 8080;
-asio::awaitable<void> listener()
+asio::awaitable<void> listener(unsigned short port)
 {
     auto executor = co_await this_coro::executor;
     asio::ip::tcp::acceptor acceptor(executor, {asio::ip::tcp::v4(), port});
@@ -168,16 +180,32 @@ asio::awaitable<void> listener()
         std::cout << "Accepted?" << std::endl;
     }
 }
-
+/// \brief Load the configuration
+/// \param port out The location to write the acquired port number
+/// \returns The configuration object.
+nlohmann::json load_configuration(unsigned short& port);
 int main()
 {
+    unsigned short port = 8080;
+
     irods::api_entry_table& api_tbl = irods::get_client_api_table();
     irods::pack_entry_table& pk_tbl = irods::get_pack_table();
     init_api_table(api_tbl, pk_tbl);
 
-    // This is where the configuration file is loaded and everything is set up.
-    // It should not be hard to move this to a new function wherever you like should you find that
-    // more palatable.
+    auto config_value = load_configuration(port);
+
+    asio::io_context io_context(
+        config_value.find("threads") != config_value.end() ? config_value["threads"].get<int>()
+                                                           : 3 * (std::thread::hardware_concurrency() + 1));
+    auto address = asio::ip::make_address("0.0.0.0");
+    asio::signal_set signals(io_context, SIGINT, SIGTERM);
+    signals.async_wait([&](auto, auto) { io_context.stop(); });
+    asio::co_spawn(io_context, listener(port), boost::asio::detached);
+    io_context.run();
+    return 0;
+}
+nlohmann::json load_configuration(unsigned short& port)
+{
     nlohmann::json config_value;
     {
         if (!std::filesystem::exists("config.json")) {
@@ -222,14 +250,5 @@ int main()
                       << "to the 'plugins' object in your config.json" << std::endl;
         }
     }
-
-    asio::io_context io_context(
-        config_value.find("threads") != config_value.end() ? config_value["threads"].get<int>()
-                                                           : 3 * (std::thread::hardware_concurrency() + 1));
-    auto address = asio::ip::make_address("0.0.0.0");
-    asio::signal_set signals(io_context, SIGINT, SIGTERM);
-    signals.async_wait([&](auto, auto) { io_context.stop(); });
-    asio::co_spawn(io_context, listener(), boost::asio::detached);
-    io_context.run();
-    return 0;
+    return config_value;
 }

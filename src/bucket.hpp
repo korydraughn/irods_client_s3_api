@@ -23,4 +23,4 @@ namespace irods::s3
         const boost::urls::segments_view&);
     std::string strip_bucket(const std::string&);
 } //namespace irods::s3
-#endif IRODS_S3_API_BUCKET_HPP
+#endif // IRODS_S3_API_BUCKET_HPP
