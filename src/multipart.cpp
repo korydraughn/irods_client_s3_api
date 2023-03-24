@@ -10,7 +10,7 @@
 // The path of the finished object needs to be able to be encoded to a data-object name safe string.
 // It does, however, not need to be decoded from the other end.
 
-std::string temporary_directory = "/tempZone/temp";
+std::string_view temporary_collection = "/tempZone/temp";
 namespace irods::s3::multipart::utilities
 {
     // In order to store the entire path in the bucket as a file, it makes a lot of sense
@@ -46,6 +46,6 @@ namespace irods::s3::multipart::utilities
 
     const std::string get_temporary_file(const std::string_view& path, const std::string_view& part_number)
     {
-        return fmt::format("{}/{}/{}", temporary_directory, encode_path(path), part_number);
+        return fmt::format("{}/{}/{}", temporary_collection, encode_path(path), part_number);
     }
 } //namespace irods::s3::multipart::utilities

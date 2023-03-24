@@ -62,10 +62,16 @@ namespace
 
     bool should_include_header(const std::string_view& sv)
     {
-        return sv.starts_with("X-Amz") || sv.starts_with("x-amz") || sv == "Host" || sv == "Content-Type" ||
-               sv == "Content-MD5";
+        return sv.starts_with("X-Amz") || sv.starts_with("x-amz") || sv == "Host" || sv == "Content-Type";
     }
-
+    std::string to_lower(const std::string_view& sv)
+    {
+        std::string r;
+        for (auto i : sv) {
+            r.push_back(tolower(i));
+        }
+        return r;
+    }
     std::string canonicalize_request(
         const static_buffer_request_parser& request,
         const boost::urls::url_view& url,
@@ -105,7 +111,9 @@ namespace
         result << '\n';
 
         for (const auto& header : request.get()) {
-            if (should_include_header(std::string_view(header.name_string().data(), header.name_string().length())))
+            if (should_include_header(std::string_view(header.name_string().data(), header.name_string().length())) ||
+                std::find(signed_headers.begin(), signed_headers.end(), to_lower(header.name_string())) !=
+                    signed_headers.end())
                 sorted_fields.emplace_back(header.name_string().data(), header.name_string().length());
         }
 

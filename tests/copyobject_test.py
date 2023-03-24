@@ -9,6 +9,7 @@ from tests.utility import *
 class CopyObject_Test(unittest.TestCase):
     def setUp(self):
         session = botocore.session.get_session()
+        # To enable logging of the signature steps, you can uncomment this line
         # session.set_stream_logger('botocore.auth', botocore.logging.DEBUG)
         self.client = session.create_client("s3",
                                             use_ssl=False,

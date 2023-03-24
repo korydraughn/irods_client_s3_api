@@ -76,13 +76,16 @@ asio::awaitable<void> irods::s3::actions::handle_putobject(
         response.set("Etag", path.c_str());
         response.set("Connection", "close");
 
-        while (!parser.is_done()) {
-            auto read = co_await beast::http::async_read_some(socket, buffer, parser, asio::use_awaitable);
-
+        while (!parser.is_done() || !parser.get().body().more) {
+            parser.get().body().data = buf;
+            parser.get().body().size = sizeof(buf);
+            //            auto read = co_await beast::http::async_read_some(socket, buffer, parser,
+            //            asio::use_awaitable);
+            auto read = beast::http::read_some(socket, buffer, parser);
             size_t read_bytes = sizeof(buf) - parser.get().body().size;
 
-            std::cout << "Read " << read_bytes << std::endl << std::endl;
-            std::cout.write((char*) buf, read_bytes);
+            std::cout << "Read " << read_bytes << std::endl;
+            //            std::cout.write((char*) buf, read_bytes);
             try {
                 d.write((char*) buf, read_bytes);
             }
