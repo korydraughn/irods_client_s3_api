@@ -10,7 +10,7 @@
 namespace
 {
 
-    std::string uri_encode(const std::string_view& sv)
+    std::string uri_encode(const std::string_view sv)
     {
         std::stringstream s;
         std::ios state(nullptr);
@@ -31,10 +31,8 @@ namespace
         return s.str();
     }
 
-    std::string get_user_signing_key(
-        const std::string_view& secret_key,
-        const std::string_view& date,
-        const std::string_view& region)
+    std::string
+    get_user_signing_key(const std::string_view secret_key, const std::string_view date, const std::string_view region)
     {
         // Hate it when amazon gives me homework
         // during implementation of their protocol
@@ -42,7 +40,6 @@ namespace
         auto date_key = irods::s3::authentication::hmac_sha_256(std::string("AWS4").append(secret_key), date);
         auto date_region_key = irods::s3::authentication::hmac_sha_256(date_key, region);
         // 'date region service key'
-        // :eyeroll:
         auto date_region_service_key = irods::s3::authentication::hmac_sha_256(date_region_key, "s3");
         return irods::s3::authentication::hmac_sha_256(date_region_service_key, "aws4_request");
     }
@@ -54,17 +51,17 @@ namespace
     {
         std::stringstream result;
         // result << request.get().at("Host");
-        for (auto i : url.segments()) {
+        for (const auto& i : url.segments()) {
             result << '/' << uri_encode(i); // :shrug:
         }
         return result.str();
     }
 
-    bool should_include_header(const std::string_view& sv)
+    bool should_include_header(const std::string_view sv)
     {
         return sv.starts_with("X-Amz") || sv.starts_with("x-amz") || sv == "Host" || sv == "Content-Type";
     }
-    std::string to_lower(const std::string_view& sv)
+    std::string to_lower(const std::string_view sv)
     {
         std::string r;
         for (auto i : sv) {
@@ -77,7 +74,7 @@ namespace
         const boost::urls::url_view& url,
         const std::vector<std::string>& signed_headers)
     {
-        // At various points it wants various fields to be sorted.
+        // At various points the signature process wants various fields to be sorted.
         // so reusing this can at least avoid some of the duplicate allocations and such
         std::vector<std::string_view> sorted_fields;
 
@@ -95,9 +92,10 @@ namespace
             // Changing it to a pair enables us to sort easily.
             std::vector<std::pair<std::string, std::string>> params;
             std::transform(
-                url.encoded_params().begin(), url.encoded_params().end(), std::back_inserter(params), [](auto a) {
-                    if (a.has_value)
+                url.encoded_params().begin(), url.encoded_params().end(), std::back_inserter(params), [](const auto &a) {
+                    if (a.has_value) {
                         return std::make_pair<std::string, std::string>(uri_encode(a.key), uri_encode(a.value));
+                    }
                     return std::make_pair(uri_encode(a.key), std::string(""));
                 });
             std::sort(params.begin(), params.end());
@@ -111,10 +109,12 @@ namespace
         result << '\n';
 
         for (const auto& header : request.get()) {
-            if (should_include_header(std::string_view(header.name_string().data(), header.name_string().length())) ||
+            if (should_include_header(header.name_string()) ||
                 std::find(signed_headers.begin(), signed_headers.end(), to_lower(header.name_string())) !=
                     signed_headers.end())
+            {
                 sorted_fields.emplace_back(header.name_string().data(), header.name_string().length());
+            }
         }
 
         // Produce the 'canonical headers'
@@ -132,8 +132,9 @@ namespace
             return result.second != rhs.cend() &&
                    (result.first == lhs.cend() || tolower(*result.first) < tolower(*result.second));
         });
-        for (auto& i : sorted_fields)
+        for (auto& i : sorted_fields) {
             std::cerr << i << ",";
+        }
         std::cerr << '\n';
         for (const auto& field : sorted_fields) {
             auto val = static_cast<std::string>(request.get().at(boost::string_view(field.data(), field.length())));
@@ -179,9 +180,9 @@ namespace
     std::string string_to_sign(
         const static_buffer_request_parser& request,
         const boost::urls::url_view& url,
-        const std::string_view& date,
-        const std::string_view& region,
-        const std::string_view& canonical_request)
+        const std::string_view date,
+        const std::string_view region,
+        const std::string_view canonical_request)
     {
         std::stringstream result;
         result << "AWS4-HMAC-SHA256\n";

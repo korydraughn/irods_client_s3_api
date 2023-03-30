@@ -42,12 +42,12 @@ bool irods::s3::plugins::authentication_plugin_loaded()
     return active_authentication_plugin.get_iRODS_user != nullptr;
 }
 
-bool irods::s3::authentication::delete_user(rcComm_t& connection, const std::string_view& username)
+bool irods::s3::authentication::delete_user(rcComm_t& connection, const std::string_view username)
 {
     return active_authentication_plugin.delete_user(&connection, username.data());
 }
 
-bool irods::s3::authentication::user_exists(rcComm_t& connection, const std::string_view& username)
+bool irods::s3::authentication::user_exists(rcComm_t& connection, const std::string_view username)
 {
     if (active_authentication_plugin.user_exists) {
         active_authentication_plugin.user_exists(&connection, username.data());
@@ -65,8 +65,8 @@ bool irods::s3::authentication::user_exists(rcComm_t& connection, const std::str
 
 bool irods::s3::authentication::create_user(
     rcComm_t& connection,
-    const std::string_view& username,
-    const std::string_view& secret_key)
+    const std::string_view username,
+    const std::string_view secret_key)
 {
     if (user_exists(connection, username)) {
         return false;
@@ -77,7 +77,7 @@ bool irods::s3::authentication::create_user(
     }
     return false;
 }
-std::optional<std::string> irods::s3::authentication::get_iRODS_user(rcComm_t* conn, const std::string_view& user)
+std::optional<std::string> irods::s3::authentication::get_iRODS_user(rcComm_t* conn, const std::string_view user)
 {
     // Arbitrary length, can be adjusted without issue. May be necessary to expand the size
     // should someone with a maximally multilingual plane username with more than 30 graphemes use it.
@@ -88,7 +88,7 @@ std::optional<std::string> irods::s3::authentication::get_iRODS_user(rcComm_t* c
     return std::string(username);
 }
 
-std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm_t* conn, const std::string_view& user)
+std::optional<std::string> irods::s3::authentication::get_user_secret_key(rcComm_t* conn, const std::string_view user)
 {
     // Arbitrary length that should fit in the stack in most cases.
     char secret_key[512];
