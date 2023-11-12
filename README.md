@@ -18,6 +18,7 @@ Initial effort includes:
   - GetObjectAcl ?
   - [x] GetObjectLockConfiguration
   - GetObjectTagging ?
+  - HeadBucket
   - [x] HeadObject
   - [x] ListBuckets
   - ListObjects ?
