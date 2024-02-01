@@ -2,6 +2,7 @@
 
 #include "irods/private/s3_api/globals.hpp"
 #include "irods/private/s3_api/log.hpp"
+#include "irods/private/s3_api/s3_api.hpp"
 
 #include <boost/beast/version.hpp>
 #include <boost/asio/dispatch.hpp>
@@ -9,6 +10,7 @@
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/thread_pool.hpp>
 #include <boost/config.hpp>
+#include <boost/url/src.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -88,7 +90,8 @@ namespace irods::http
 		// Process client request and send a response.
 		//
 
-		auto req_ = parser_->release();
+        // TODO the parser probably is invalidated?
+		auto& req_ = parser_->get();
 
 		// Print the headers.
 		for (auto&& h : req_.base()) {
@@ -104,9 +107,128 @@ namespace irods::http
 		logging::debug("{}: Chunked: {}", __func__, req_.chunked());
 		logging::debug("{}: Needs EOF: {}", __func__, req_.need_eof());
 
+        std::string url_string = static_cast<std::string>(req_.find("Host")->value()).append(req_.target());
+		log::debug("{}: Candidate url string: {}", __func__, url_string);
+
 		namespace http = boost::beast::http;
 
-		try {
+        (void)req_handlers_;
+        boost::urls::url url2;
+        auto host = req_.find("Host")->value();
+        url2.set_encoded_host(host.find(':') != std::string::npos ? host.substr(0, host.find(':')) : host);
+        url2.set_path(req_.target().substr(0, req_.target().find("?")));
+        url2.set_scheme("http");
+        if (req_.target().find('?') != std::string::npos) {
+            url2.set_encoded_query(req_.target().substr(req_.target().find("?") + 1));
+        }
+
+        boost::urls::url_view url = url2;
+        const auto& segments = url.segments();
+        //const auto& params = url.params();
+
+        switch (req_.method()) {
+            /*case boost::beast::http::verb::get:
+                if (segments.empty() || params.contains("encoding-type") || params.contains("list-type")) {
+                    // Among other things, listobjects should be handled here.
+
+                    // This is a weird little thing because the parameters are a multimap.
+                    auto f = params.find("list-type");
+
+                    // Honestly not being able to use -> here strikes me as a potential mistake that
+                    // will be corrected in the future when boost::url is released properly as part
+                    // of boost
+                    if (f != params.end() && (*f).value == "2") {
+                        std::cout << "Listobjects detected" << std::endl;
+                        co_await irods::s3::actions::handle_listobjects_v2(socket, parser, url);
+                    }
+                }
+                else {
+                    if (req_.target() == "/") {
+                        // This is a ListBucket
+                        std::cout << "ListBucket detected" << std::endl;
+                        co_await irods::s3::actions::handle_listbuckets(socket, parser, url);
+                        co_return;
+                    }
+                    else if (params.find("location") != params.end()) {
+                        // This is GetBucketLocation
+                        std::cout << "GetBucketLocation detected" << std::endl;
+                        std::string s3_region = irods::s3::get_s3_region();
+                        beast::http::response<beast::http::string_body> resp;
+                        boost::property_tree::ptree document;
+                        document.add("LocationConstraint", s3_region);
+                        std::stringstream s;
+                        boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
+                        settings.indent_char = ' ';
+                        settings.indent_count = 4;
+                        boost::property_tree::write_xml(s, document, settings);
+                        resp.body() = s.str();
+                        co_await beast::http::async_write(socket, resp, asio::use_awaitable);
+                        co_return;
+                    }
+                    else if (params.find("object-lock") != params.end()) {
+                        std::cout << "GetObjectLockConfiguration detected" << std::endl;
+                        beast::http::response<beast::http::string_body> resp;
+                        resp.body() = "<?xml version='1.0' encoding='utf-8'?>"
+                                      "<ObjectLockConfiguration/>";
+                        co_await beast::http::async_write(socket, resp, asio::use_awaitable);
+                        co_return;
+                    }
+                    else {
+                        std::cout << "getobject detected" << std::endl;
+                        co_await irods::s3::actions::handle_getobject(socket, parser, url);
+                    }
+                }
+                break;
+            case boost::beast::http::verb::put:
+                if (req_.find("x-amz-copy-source") != req_.end()) {
+                    // copyobject
+                    std::cout << "Copyobject detected" << std::endl;
+                    co_await irods::s3::actions::handle_copyobject(socket, parser, url);
+                }
+                else {
+                    // putobject
+                    std::cout << "putobject detected" << std::endl;
+                    co_await irods::s3::actions::handle_putobject(socket, parser, url);
+                    co_return;
+                }
+                break;
+            case boost::beast::http::verb::delete_:
+                if (segments.empty()) {
+                    std::cout << "Deletebucket detected?" << std::endl;
+                }
+                else {
+                    std::cout << "Deleteobject detected" << std::endl;
+                    co_await irods::s3::actions::handle_deleteobject(socket, parser, url);
+                    co_return;
+                }
+                break;*/
+            case boost::beast::http::verb::head:
+                // Determine if it is HeadBucket or HeadObject 
+                if (1 == segments.size()) {
+		            log::debug("{}: HeadBucket detected", __func__);
+                    //co_await irods::s3::actions::handle_headbucket(socket, parser, url);
+                }
+                else {
+		            log::debug("{}: HeadObject detected", __func__);
+                    boost::beast::http::response<boost::beast::http::string_body> response;
+                    irods::s3::actions::handle_headobject(*parser_, url, response);
+                    send(std::move(response));
+                    return;
+                }
+                break;
+                /*
+            case boost::beast::http::verb::delete_:
+                // DeleteObject
+                std::cout << "Deleteobject detected" << std::endl;
+                break;
+                */
+            default:
+		        log::error("{}: Someone tried to make an HTTP request with a method that is not yet supported", __func__);
+        }
+
+        send(irods::http::fail(http::status::ok));
+
+		/*try {
 #ifdef IRODS_WRITE_REQUEST_TO_TEMP_FILE
 			std::ofstream{"/tmp/http_request.txt"}.write(req_.body().c_str(), (std::streamsize) req_.body().size());
 #endif
@@ -128,7 +250,7 @@ namespace irods::http
 		catch (const std::exception& e) {
 			logging::error("{}: {}", __func__, e.what());
 			send(irods::http::fail(http::status::internal_server_error));
-		}
+		}*/
 	} // on_read
 
 	auto session::on_write(bool close, boost::beast::error_code ec, std::size_t bytes_transferred) -> void

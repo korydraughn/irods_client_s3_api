@@ -6,6 +6,7 @@
 #include "irods/private/s3_api/transport.hpp"
 #include "irods/private/s3_api/process_stash.hpp"
 #include "irods/private/s3_api/version.hpp"
+#include "irods/private/s3_api/configuration.hpp"
 
 #include <irods/connection_pool.hpp>
 #include <irods/fully_qualified_username.hpp>
@@ -761,6 +762,7 @@ auto main(int _argc, char* _argv[]) -> int
 
 		const auto& s3_server_config = config.at("s3_server");
 		set_log_level(s3_server_config);
+
 		spdlog::set_pattern("[%Y-%m-%d %T.%e] [P:%P] [%^%l%$] [T:%t] %v");
 
 		logging::info("Initializing server.");
