@@ -2,7 +2,6 @@
 #include "../../third-party/hmac_sha256/hmac_sha256.h"
 #include "irods/private/s3_api/log.hpp"
 
-// This is a very slight hack I guess but it is required to compile successfully
 extern "C" {
 #include "../../third-party/hmac_sha256/sha256.h"
 }
@@ -25,8 +24,6 @@ namespace irods::s3::authentication
 
     std::string hash_sha_256(const std::string_view& data)
     {
-        //unsigned char result[32];
-        //size_t result_size;
         Sha256Context ctx;
         Sha256Initialise(&ctx);
         Sha256Update(&ctx, static_cast<const void*>(data.data()), data.length());

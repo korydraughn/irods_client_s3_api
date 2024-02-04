@@ -31,8 +31,6 @@ std::unique_ptr<rcComm_t, irods::s3::__detail::rcComm_Deleter> irods::s3::get_co
 
     if (nullptr == result || err.status) {
         log::error(err.msg);
-        // Good old code 2143987421 (Manual not consulted due to draftiness, brrr)
-        // exit(2143987421);
     }
 
     if (const int ec = clientLoginWithPassword(result.get(), const_cast<char*>(password.c_str())); ec < 0) {
