@@ -17,7 +17,7 @@ namespace irods::s3::authentication
     /// \param url The url
     ///
     /// \returns An iRODS username if the signature is correct, else an empty std::optional.
-    std::optional<std::string> authenticates(rcComm_t& conn, const static_buffer_request_parser& request, const boost::urls::url_view& url);
+    std::optional<std::string> authenticates(rcComm_t& conn, const static_buffer_request_parser& parser, const boost::urls::url_view& url);
 
     std::optional<std::string> get_iRODS_user(rcComm_t* conn, const std::string_view access_key);
     std::optional<std::string> get_user_secret_key(rcComm_t* conn, const std::string_view access_key);

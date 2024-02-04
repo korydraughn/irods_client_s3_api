@@ -69,7 +69,7 @@ namespace
         return r;
     }
     std::string canonicalize_request(
-        const static_buffer_request_parser& request,
+        const static_buffer_request_parser& parser,
         const boost::urls::url_view& url,
         const std::vector<std::string>& signed_headers)
     {
@@ -84,7 +84,7 @@ namespace
         std::ios state(nullptr);
         state.copyfmt(result);
 
-        result << request.get().method_string() << '\n';
+        result << parser.get().method_string() << '\n';
         result.copyfmt(result); // re store former formatting
         result << canonicalize_url(url) << '\n';
         // Canonicalize query string
@@ -109,7 +109,7 @@ namespace
         }
         result << '\n';
 
-        for (const auto& header : request.get()) {
+        for (const auto& header : parser.get()) {
             if (std::find(signed_headers.begin(), signed_headers.end(), to_lower(header.name_string())) !=
                     signed_headers.end())
             {
@@ -136,7 +136,7 @@ namespace
         }
         log::debug(fields_str);
         for (const auto& field : sorted_fields) {
-            auto val = static_cast<std::string>(request.get().at(boost::string_view(field.data(), field.length())));
+            auto val = static_cast<std::string>(parser.get().at(boost::string_view(field.data(), field.length())));
             std::string key(field);
             std::transform(key.begin(), key.end(), key.begin(), tolower);
             boost::trim(val);
@@ -166,7 +166,7 @@ namespace
 
         //and the payload signature
 
-        if (auto req = request.get().find("X-Amz-Content-SHA256"); req != request.get().end()) {
+        if (auto req = parser.get().find("X-Amz-Content-SHA256"); req != parser.get().end()) {
             result << req->value();
         }
         else {
@@ -177,14 +177,14 @@ namespace
     }
 
     std::string string_to_sign(
-        const static_buffer_request_parser& request,
+        const static_buffer_request_parser& parser,
         const std::string_view date,
         const std::string_view region,
         const std::string_view canonical_request)
     {
         std::stringstream result;
         result << "AWS4-HMAC-SHA256\n";
-        result << request.get().at("X-Amz-Date") << '\n';
+        result << parser.get().at("X-Amz-Date") << '\n';
         result << date << '/' << region << "/s3/aws4_request\n";
         result << irods::s3::authentication::hex_encode(irods::s3::authentication::hash_sha_256(canonical_request));
         return result.str();
@@ -192,7 +192,7 @@ namespace
 } //namespace
 std::optional<std::string> irods::s3::authentication::authenticates(
     rcComm_t& conn,
-    const static_buffer_request_parser& request,
+    const static_buffer_request_parser& parser,
     const boost::urls::url_view& url)
 {
     namespace log = irods::http::log;
@@ -201,7 +201,7 @@ std::optional<std::string> irods::s3::authentication::authenticates(
     // should be equal to something like
     // [ 'AWS4-SHA256-HMAC Credential=...', 'SignedHeaders=...', 'Signature=...']
 
-    boost::split(auth_fields, request.get().at("Authorization"), boost::is_any_of(","));
+    boost::split(auth_fields, parser.get().at("Authorization"), boost::is_any_of(","));
 
     // Strip the names and such
     for (auto& field : auth_fields) {
@@ -219,10 +219,10 @@ std::optional<std::string> irods::s3::authentication::authenticates(
 
     boost::split(signed_headers, auth_fields[1], boost::is_any_of(";"));
 
-    auto canonical_request = canonicalize_request(request, url, signed_headers);
+    auto canonical_request = canonicalize_request(parser, url, signed_headers);
     log::debug("========== Canon request ==========\n{}", canonical_request);
 
-    auto sts = string_to_sign(request, date, region, canonical_request);
+    auto sts = string_to_sign(parser, date, region, canonical_request);
     log::debug("======== String to sign ===========\n{}", sts);
     log::debug("===================================");
 
