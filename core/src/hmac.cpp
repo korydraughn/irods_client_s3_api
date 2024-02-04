@@ -1,9 +1,9 @@
 #include "irods/private/s3_api/hmac.hpp"
-#include "../../third-party/hmac_sha256/hmac_sha256.h"
+#include "hmac_sha256.h"
 #include "irods/private/s3_api/log.hpp"
 
 extern "C" {
-#include "../../third-party/hmac_sha256/sha256.h"
+#include "sha256.h"
 }
 
 #include <fmt/core.h>
