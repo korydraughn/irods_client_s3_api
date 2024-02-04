@@ -9,7 +9,6 @@
 #include <boost/url.hpp>
 
 #include "irods/private/s3_api/types.hpp"
-//#include "../connection.hpp"
 
 namespace irods::s3::actions
 {

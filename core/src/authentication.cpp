@@ -41,24 +41,21 @@ namespace
     get_user_signing_key(const std::string_view secret_key, const std::string_view date, const std::string_view region)
     {
         namespace log = irods::http::log;
-        // Hate it when amazon gives me homework
-        // during implementation of their protocol
         log::debug("date time component is {}", date);
         auto date_key = irods::s3::authentication::hmac_sha_256(std::string("AWS4").append(secret_key), date);
         auto date_region_key = irods::s3::authentication::hmac_sha_256(date_key, region);
-        // 'date region service key'
         auto date_region_service_key = irods::s3::authentication::hmac_sha_256(date_region_key, "s3");
         return irods::s3::authentication::hmac_sha_256(date_region_service_key, "aws4_request");
     }
 
-    // TODO when this is working, we can improve performance by reusing the same stringstream where possible.
+    // TODO we can improve performance by reusing the same stringstream where possible.
 
     // Turn the url into the 'canon form'
     std::string canonicalize_url(const boost::urls::url_view& url)
     {
         std::stringstream result;
         for (const auto& i : url.segments()) {
-            result << '/' << uri_encode(i); // :shrug:
+            result << '/' << uri_encode(i);
         }
         return result.str();
     }
@@ -121,9 +118,6 @@ namespace
         }
 
         // Produce the 'canonical headers'
-
-        // They mix cases of headers :)
-        // I hate it
         std::sort(sorted_fields.begin(), sorted_fields.end(), [](const auto& lhs, const auto& rhs) {
             const auto result = std::mismatch(
                 lhs.cbegin(),
@@ -220,8 +214,6 @@ std::optional<std::string> irods::s3::authentication::authenticates(
     auto& access_key_id = credential_fields[0]; // This is the username.
     auto& date = credential_fields[1];
     auto& region = credential_fields[2];
-    // Look, covering my bases here seems prudent.
-    //auto& aws_service = credential_fields[3];
 
     auto& signature = auth_fields[2];
 
