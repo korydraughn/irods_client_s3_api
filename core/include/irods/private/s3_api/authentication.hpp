@@ -1,10 +1,12 @@
 #ifndef IRODS_S3_API_AUTHENTICATION_HPP
 #define IRODS_S3_API_AUTHENTICATION_HPP
+
+#include "irods/private/s3_api/types.hpp"
+
 #include <irods/rcConnect.h>
 #include <string>
 #include <string_view>
 #include <boost/beast.hpp>
-#include "types.hpp"
 #include <boost/url.hpp>
 #include <optional>
 
