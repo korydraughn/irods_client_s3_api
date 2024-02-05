@@ -211,17 +211,14 @@ namespace irods::http
                 else {
 		            log::debug("{}: HeadObject detected", __func__);
                     boost::beast::http::response<boost::beast::http::string_body> response;
-                    irods::s3::actions::handle_headobject(*parser_, url, response);
-                    send(std::move(response));
+                    auto shared_this = shared_from_this();
+		            irods::http::globals::background_task(
+		            	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
+                        irods::s3::actions::handle_headobject(shared_this, *parser, _url, _response);
+			        });
                     return;
                 }
                 break;
-                /*
-            case boost::beast::http::verb::delete_:
-                // DeleteObject
-                std::cout << "Deleteobject detected" << std::endl;
-                break;
-                */
             default:
 		        log::error("{}: Someone tried to make an HTTP request with a method that is not yet supported", __func__);
         }
