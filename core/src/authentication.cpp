@@ -191,7 +191,6 @@ namespace
     }
 } //namespace
 std::optional<std::string> irods::s3::authentication::authenticates(
-    rcComm_t& conn,
     const static_buffer_request_parser& parser,
     const boost::urls::url_view& url)
 {
@@ -227,7 +226,7 @@ std::optional<std::string> irods::s3::authentication::authenticates(
     log::debug("===================================");
 
     log::trace("Searching for user with access_key_id={}", access_key_id);
-    auto irods_user = irods::s3::authentication::get_iRODS_user(&conn, access_key_id);
+    auto irods_user = irods::s3::authentication::get_iRODS_user(access_key_id);
 
     if (!irods_user) {
         log::debug("Authentication Error: No iRODS username mapped to access key ID [{}]", access_key_id);
@@ -235,7 +234,7 @@ std::optional<std::string> irods::s3::authentication::authenticates(
     }
 
     auto signing_key = get_user_signing_key(
-        irods::s3::authentication::get_user_secret_key(&conn, access_key_id).value(), date, region);
+        irods::s3::authentication::get_user_secret_key(access_key_id).value(), date, region);
     auto computed_signature = hex_encode(hmac_sha_256(signing_key, sts));
 
     log::debug("Computed: [{}]", computed_signature);

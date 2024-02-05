@@ -18,7 +18,7 @@ namespace
     std::optional<std::unordered_map<std::string_view, user>> users; 
 } //namespace
 
-std::optional<std::string> irods::s3::authentication::get_iRODS_user([[maybe_unused]] rcComm_t* conn, const std::string_view access_key)
+std::optional<std::string> irods::s3::authentication::get_iRODS_user(const std::string_view access_key)
 {
     //using json_ptr = nlohmann::json::json_pointer;
     if (!users.has_value()) {
@@ -35,7 +35,7 @@ std::optional<std::string> irods::s3::authentication::get_iRODS_user([[maybe_unu
     return std::nullopt;
 }
 
-std::optional<std::string> irods::s3::authentication::get_user_secret_key([[maybe_unused]] rcComm_t* conn, const std::string_view access_key)
+std::optional<std::string> irods::s3::authentication::get_user_secret_key(const std::string_view access_key)
 {
     //using json_ptr = nlohmann::json::json_pointer;
     if (!users.has_value()) {
