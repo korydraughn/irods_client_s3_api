@@ -1,13 +1,13 @@
 add_library(
   irods_s3_endpoints
   OBJECT
-  #"${CMAKE_CURRENT_SOURCE_DIR}/src/listobjects.cpp"
-  #"${CMAKE_CURRENT_SOURCE_DIR}/src/listbuckets.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/listobjects.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/listbuckets.cpp"
   #"${CMAKE_CURRENT_SOURCE_DIR}/src/getobject.cpp"
   #"${CMAKE_CURRENT_SOURCE_DIR}/src/putobject.cpp"
   #"${CMAKE_CURRENT_SOURCE_DIR}/src/deleteobject.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/headobject.cpp"
-  #"${CMAKE_CURRENT_SOURCE_DIR}/src/headbucket.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/headbucket.cpp"
   #"${CMAKE_CURRENT_SOURCE_DIR}/src/copyobject.cpp"
 )
 
