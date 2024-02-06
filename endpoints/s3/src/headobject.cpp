@@ -86,11 +86,14 @@ void irods::s3::actions::handle_headobject(
        }
     }
     catch (std::system_error& e) {
-        log::error("{}", e.what());
+        log::error("{}: {}", __FUNCTION__, e.what());
         switch (e.code().value()) {
             case USER_ACCESS_DENIED:
             case CAT_NO_ACCESS_PERMISSION:
                 response.result(beast::http::status::forbidden);
+                break;
+            default:
+                response.result(beast::http::status::internal_server_error);
                 break;
         }
     }

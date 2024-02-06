@@ -181,19 +181,23 @@ namespace irods::http
                     }*/
                 }
                 break;
-            /*case boost::beast::http::verb::put:
+            case boost::beast::http::verb::put:
                 if (req_.find("x-amz-copy-source") != req_.end()) {
-                    // copyobject
-                    std::cout << "Copyobject detected" << std::endl;
-                    co_await irods::s3::actions::handle_copyobject(socket, parser, url);
+		                log::debug("{}: CopyObject detected", __func__);
+                        boost::beast::http::response<boost::beast::http::string_body> response;
+                        auto shared_this = shared_from_this();
+		                irods::http::globals::background_task(
+		                	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
+                            irods::s3::actions::handle_copyobject(shared_this, *parser, _url, _response);
+			            });
                 }
-                else {
+                /*else {
                     // putobject
                     std::cout << "putobject detected" << std::endl;
                     co_await irods::s3::actions::handle_putobject(socket, parser, url);
                     co_return;
-                }
-                break;*/
+                }*/
+                break;
             case boost::beast::http::verb::delete_:
                 if (segments.empty()) {
 		            log::debug("{}: DeleteBucket detected?", __func__);
