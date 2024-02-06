@@ -139,7 +139,6 @@ namespace irods::http
 		                	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
                             irods::s3::actions::handle_listobjects_v2(shared_this, *parser, _url, _response);
 			            });
-                        return;
                     }
                 }
                 else {
@@ -151,7 +150,6 @@ namespace irods::http
 		                	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
                             irods::s3::actions::handle_listbuckets(shared_this, *parser, _url, _response);
 			            });
-                        return;
                     }
                   /*  else if (params.find("location") != params.end()) {
                         // This is GetBucketLocation
@@ -195,17 +193,22 @@ namespace irods::http
                     co_await irods::s3::actions::handle_putobject(socket, parser, url);
                     co_return;
                 }
-                break;
+                break;*/
             case boost::beast::http::verb::delete_:
                 if (segments.empty()) {
-                    std::cout << "Deletebucket detected?" << std::endl;
+		            log::debug("{}: DeleteBucket detected?", __func__);
+                    send(irods::http::fail(http::status::not_implemented));
                 }
                 else {
-                    std::cout << "Deleteobject detected" << std::endl;
-                    co_await irods::s3::actions::handle_deleteobject(socket, parser, url);
-                    co_return;
+		            log::debug("{}: DeleteObject detected", __func__);
+                    boost::beast::http::response<boost::beast::http::string_body> response;
+                    auto shared_this = shared_from_this();
+		            irods::http::globals::background_task(
+		            	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
+                        irods::s3::actions::handle_deleteobject(shared_this, *parser, _url, _response);
+			        });
                 }
-                break;*/
+                break;
             case boost::beast::http::verb::head:
                 // Determine if it is HeadBucket or HeadObject 
                 if (1 == segments.size()) {
@@ -216,7 +219,6 @@ namespace irods::http
 		            	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
                         irods::s3::actions::handle_headbucket(shared_this, *parser, _url, _response);
 			        });
-                    return;
                 }
                 else {
 		            log::debug("{}: HeadObject detected", __func__);
@@ -226,14 +228,12 @@ namespace irods::http
 		            	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
                         irods::s3::actions::handle_headobject(shared_this, *parser, _url, _response);
 			        });
-                    return;
                 }
                 break;
             default:
 		        log::error("{}: Someone tried to make an HTTP request with a method that is not yet supported", __func__);
+                send(irods::http::fail(http::status::not_implemented));
         }
-
-        send(irods::http::fail(http::status::ok));
 
 		/*try {
 #ifdef IRODS_WRITE_REQUEST_TO_TEMP_FILE
