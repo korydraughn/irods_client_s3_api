@@ -3,6 +3,7 @@
 #include "irods/private/s3_api/globals.hpp"
 #include "irods/private/s3_api/log.hpp"
 #include "irods/private/s3_api/s3_api.hpp"
+#include "irods/private/s3_api/configuration.hpp"
 
 #include <boost/beast/version.hpp>
 #include <boost/asio/dispatch.hpp>
@@ -11,6 +12,8 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/config.hpp>
 #include <boost/url/src.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -151,11 +154,11 @@ namespace irods::http
                             irods::s3::actions::handle_listbuckets(shared_this, *parser, _url, _response);
 			            });
                     }
-                  /*  else if (params.find("location") != params.end()) {
+                    else if (params.find("location") != params.end()) {
                         // This is GetBucketLocation
-                        std::cout << "GetBucketLocation detected" << std::endl;
+		                log::debug("{}: GetBucketLocation detected", __func__);
+                        boost::beast::http::response<boost::beast::http::string_body> response;
                         std::string s3_region = irods::s3::get_s3_region();
-                        beast::http::response<beast::http::string_body> resp;
                         boost::property_tree::ptree document;
                         document.add("LocationConstraint", s3_region);
                         std::stringstream s;
@@ -163,19 +166,19 @@ namespace irods::http
                         settings.indent_char = ' ';
                         settings.indent_count = 4;
                         boost::property_tree::write_xml(s, document, settings);
-                        resp.body() = s.str();
-                        co_await beast::http::async_write(socket, resp, asio::use_awaitable);
-                        co_return;
+                        response.body() = s.str();
+                        response.result(boost::beast::http::status::ok);
+                        send(std::move(response)); 
                     }
                     else if (params.find("object-lock") != params.end()) {
-                        std::cout << "GetObjectLockConfiguration detected" << std::endl;
-                        beast::http::response<beast::http::string_body> resp;
-                        resp.body() = "<?xml version='1.0' encoding='utf-8'?>"
+		                log::debug("{}: GetObjectLockConfiguration detected", __func__);
+                        boost::beast::http::response<boost::beast::http::string_body> response;
+                        response.body() = "<?xml version='1.0' encoding='utf-8'?>"
                                       "<ObjectLockConfiguration/>";
-                        co_await beast::http::async_write(socket, resp, asio::use_awaitable);
-                        co_return;
+                        response.result(boost::beast::http::status::ok);
+                        send(std::move(response)); 
                     }
-                    else {
+                    /*else {
                         std::cout << "getobject detected" << std::endl;
                         co_await irods::s3::actions::handle_getobject(socket, parser, url);
                     }*/
