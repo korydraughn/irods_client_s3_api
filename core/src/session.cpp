@@ -136,22 +136,20 @@ namespace irods::http
 
                     if (f != params.end() && (*f).value == "2") {
 		                log::debug("{}: ListObjects detected", __func__);
-                        boost::beast::http::response<boost::beast::http::string_body> response;
                         auto shared_this = shared_from_this();
 		                irods::http::globals::background_task(
-		                	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
-                            irods::s3::actions::handle_listobjects_v2(shared_this, *parser, _url, _response);
+		                	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
+                            irods::s3::actions::handle_listobjects_v2(shared_this, *parser, _url);
 			            });
                     }
                 }
                 else {
                     if (req_.target() == "/") {
 		                log::debug("{}: ListBuckets detected", __func__);
-                        boost::beast::http::response<boost::beast::http::string_body> response;
                         auto shared_this = shared_from_this();
 		                irods::http::globals::background_task(
-		                	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
-                            irods::s3::actions::handle_listbuckets(shared_this, *parser, _url, _response);
+		                	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
+                            irods::s3::actions::handle_listbuckets(shared_this, *parser, _url);
 			            });
                     }
                     else if (params.find("location") != params.end()) {
@@ -187,11 +185,10 @@ namespace irods::http
             case boost::beast::http::verb::put:
                 if (req_.find("x-amz-copy-source") != req_.end()) {
 		                log::debug("{}: CopyObject detected", __func__);
-                        boost::beast::http::response<boost::beast::http::string_body> response;
                         auto shared_this = shared_from_this();
 		                irods::http::globals::background_task(
-		                	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
-                            irods::s3::actions::handle_copyobject(shared_this, *parser, _url, _response);
+		                	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
+                            irods::s3::actions::handle_copyobject(shared_this, *parser, _url);
 			            });
                 }
                 /*else {
@@ -208,11 +205,10 @@ namespace irods::http
                 }
                 else {
 		            log::debug("{}: DeleteObject detected", __func__);
-                    boost::beast::http::response<boost::beast::http::string_body> response;
                     auto shared_this = shared_from_this();
 		            irods::http::globals::background_task(
-		            	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
-                        irods::s3::actions::handle_deleteobject(shared_this, *parser, _url, _response);
+		            	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
+                        irods::s3::actions::handle_deleteobject(shared_this, *parser, _url);
 			        });
                 }
                 break;
@@ -220,20 +216,18 @@ namespace irods::http
                 // Determine if it is HeadBucket or HeadObject 
                 if (1 == segments.size()) {
 		            log::debug("{}: HeadBucket detected", __func__);
-                    boost::beast::http::response<boost::beast::http::string_body> response;
                     auto shared_this = shared_from_this();
 		            irods::http::globals::background_task(
-		            	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
-                        irods::s3::actions::handle_headbucket(shared_this, *parser, _url, _response);
+		            	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
+                        irods::s3::actions::handle_headbucket(shared_this, *parser, _url);
 			        });
                 }
                 else {
 		            log::debug("{}: HeadObject detected", __func__);
-                    boost::beast::http::response<boost::beast::http::string_body> response;
                     auto shared_this = shared_from_this();
 		            irods::http::globals::background_task(
-		            	[shared_this, &parser = this->parser_, _url = std::move(url), _response = std::move(response) ]() mutable {
-                        irods::s3::actions::handle_headobject(shared_this, *parser, _url, _response);
+		            	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
+                        irods::s3::actions::handle_headobject(shared_this, *parser, _url);
 			        });
                 }
                 break;

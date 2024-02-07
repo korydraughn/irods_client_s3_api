@@ -42,14 +42,14 @@ namespace log = irods::http::log;
 void irods::s3::actions::handle_deleteobject(
         irods::http::session_pointer_type session_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response)
+        const boost::urls::url_view& url)
 {
+    beast::http::response<beast::http::empty_body> response;
+
     // Permission verification stuff should go roughly here.
 
     auto irods_username = irods::s3::authentication::authenticates(parser, url);
     if (!irods_username) {
-        beast::http::response<beast::http::empty_body> response;
         response.result(beast::http::status::forbidden);
         log::debug("{}: returned {}", __FUNCTION__, response.reason());
         session_ptr->send(std::move(response)); 
@@ -66,7 +66,6 @@ void irods::s3::actions::handle_deleteobject(
         path = irods::s3::finish_path(path, url.segments());
     }
     else {
-        beast::http::response<beast::http::empty_body> response;
         response.result(beast::http::status::not_found);
         log::debug("{}: Could not find bucket", __FUNCTION__);
         log::debug("{}: returned {}", __FUNCTION__, response.reason());
@@ -77,7 +76,6 @@ void irods::s3::actions::handle_deleteobject(
 
     try {
         if (fs::client::exists(conn, path) && not fs::client::is_collection(conn, path)) {
-            beast::http::response<beast::http::empty_body> response;
             if (fs::client::remove(conn, path, experimental::filesystem::remove_options::no_trash)) {
                 log::debug("{}: Remove {} successful", __FUNCTION__, path.string());
                 response.result(beast::http::status::ok);
@@ -94,6 +92,7 @@ void irods::s3::actions::handle_deleteobject(
             response.result(beast::http::status::not_found);
             log::debug("{}: returned {}", __FUNCTION__, response.reason());
             session_ptr->send(std::move(response)); 
+            return;
         }
     }
     catch (irods::exception& e) {
