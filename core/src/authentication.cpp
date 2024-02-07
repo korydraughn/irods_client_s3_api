@@ -53,8 +53,10 @@ namespace
     // Turn the url into the 'canon form'
     std::string canonicalize_url(const boost::urls::url_view& url)
     {
+        namespace log = irods::http::log;
         std::stringstream result;
-        for (const auto& i : url.segments()) {
+        log::debug("{}:{} ({}) url={}", __FILE__, __LINE__, __FUNCTION__, url.path());
+        for (const auto i : url.segments()) {
             result << '/' << uri_encode(i);
         }
         return result.str();
