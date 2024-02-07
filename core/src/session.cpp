@@ -27,6 +27,20 @@
 
 namespace irods::http
 {
+    void get_url_from_parser(
+        boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+        boost::urls::url& url)
+    {
+        auto& message = parser.get();
+        auto host = message.find("Host")->value();
+        url.set_encoded_host(host.find(':') != std::string::npos ? host.substr(0, host.find(':')) : host);
+        url.set_path(message.target().substr(0, message.target().find("?")));
+        url.set_scheme("http");
+        if (message.target().find('?') != std::string::npos) {
+            url.set_encoded_query(message.target().substr(message.target().find("?") + 1));
+        }
+    }
+
 	session::session(
 		boost::asio::ip::tcp::socket&& socket,
 		const request_handler_map_type& _request_handler_map,
@@ -116,16 +130,12 @@ namespace irods::http
 		namespace http = boost::beast::http;
 
         (void)req_handlers_;
-        boost::urls::url url2;
-        auto host = req_.find("Host")->value();
-        url2.set_encoded_host(host.find(':') != std::string::npos ? host.substr(0, host.find(':')) : host);
-        url2.set_path(req_.target().substr(0, req_.target().find("?")));
-        url2.set_scheme("http");
-        if (req_.target().find('?') != std::string::npos) {
-            url2.set_encoded_query(req_.target().substr(req_.target().find("?") + 1));
-        }
 
+        // build the url_view - must be done within background task as url_view is not copyable
+        boost::urls::url url2;
+        get_url_from_parser(*parser_, url2);
         boost::urls::url_view url = url2;
+        
         const auto& segments = url.segments();
         const auto& params = url.params();
 
@@ -138,8 +148,12 @@ namespace irods::http
 		                log::debug("{}: ListObjects detected", __func__);
                         auto shared_this = shared_from_this();
 		                irods::http::globals::background_task(
-		                	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
-                            irods::s3::actions::handle_listobjects_v2(shared_this, *parser, _url);
+		                	[shared_this, &parser = this->parser_]() mutable {
+                            // build the url_view - must be done within background task as url_view is not copyable
+                            boost::urls::url url;
+                            get_url_from_parser(*parser, url);
+                            boost::urls::url_view url_view = url;
+                            irods::s3::actions::handle_listobjects_v2(shared_this, *parser, url_view);
 			            });
                     }
                 }
@@ -148,8 +162,12 @@ namespace irods::http
 		                log::debug("{}: ListBuckets detected", __func__);
                         auto shared_this = shared_from_this();
 		                irods::http::globals::background_task(
-		                	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
-                            irods::s3::actions::handle_listbuckets(shared_this, *parser, _url);
+		                	[shared_this, &parser = this->parser_]() mutable {
+                            // build the url_view - must be done within background task as url_view is not copyable
+                            boost::urls::url url;
+                            get_url_from_parser(*parser, url);
+                            boost::urls::url_view url_view = url;
+                            irods::s3::actions::handle_listbuckets(shared_this, *parser, url_view);
 			            });
                     }
                     else if (params.find("location") != params.end()) {
@@ -176,10 +194,18 @@ namespace irods::http
                         response.result(boost::beast::http::status::ok);
                         send(std::move(response)); 
                     }
-                    /*else {
-                        std::cout << "getobject detected" << std::endl;
-                        co_await irods::s3::actions::handle_getobject(socket, parser, url);
-                    }*/
+                    else {
+		                log::debug("{}: GetObject detected", __func__);
+                        auto shared_this = shared_from_this();
+		                irods::http::globals::background_task(
+		                	[shared_this, &parser = this->parser_]() mutable {
+                            // build the url_view - must be done within background task as url_view is not copyable
+                            boost::urls::url url;
+                            get_url_from_parser(*parser, url);
+                            boost::urls::url_view url_view = url;
+                            irods::s3::actions::handle_getobject(shared_this, *parser, url_view);
+			            });
+                    }
                 }
                 break;
             case boost::beast::http::verb::put:
@@ -187,8 +213,12 @@ namespace irods::http
 		                log::debug("{}: CopyObject detected", __func__);
                         auto shared_this = shared_from_this();
 		                irods::http::globals::background_task(
-		                	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
-                            irods::s3::actions::handle_copyobject(shared_this, *parser, _url);
+		                	[shared_this, &parser = this->parser_]() mutable {
+                            // build the url_view - must be done within background task as url_view is not copyable
+                            boost::urls::url url;
+                            get_url_from_parser(*parser, url);
+                            boost::urls::url_view url_view = url;
+                            irods::s3::actions::handle_copyobject(shared_this, *parser, url_view);
 			            });
                 }
                 /*else {
@@ -207,8 +237,12 @@ namespace irods::http
 		            log::debug("{}: DeleteObject detected", __func__);
                     auto shared_this = shared_from_this();
 		            irods::http::globals::background_task(
-		            	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
-                        irods::s3::actions::handle_deleteobject(shared_this, *parser, _url);
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_deleteobject(shared_this, *parser, url_view);
 			        });
                 }
                 break;
@@ -218,16 +252,24 @@ namespace irods::http
 		            log::debug("{}: HeadBucket detected", __func__);
                     auto shared_this = shared_from_this();
 		            irods::http::globals::background_task(
-		            	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
-                        irods::s3::actions::handle_headbucket(shared_this, *parser, _url);
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_headbucket(shared_this, *parser, url_view);
 			        });
                 }
                 else {
 		            log::debug("{}: HeadObject detected", __func__);
                     auto shared_this = shared_from_this();
 		            irods::http::globals::background_task(
-		            	[shared_this, &parser = this->parser_, _url = std::move(url)]() mutable {
-                        irods::s3::actions::handle_headobject(shared_this, *parser, _url);
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_headobject(shared_this, *parser, url_view);
 			        });
                 }
                 break;

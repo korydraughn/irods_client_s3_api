@@ -70,6 +70,7 @@ void irods::s3::actions::handle_headobject(
                return;
            }
 
+           // change response body to string_body
            response.result(boost::beast::http::status::ok);
            std::string length_field = std::to_string(irods::experimental::filesystem::client::data_object_size(conn, path));
            response.insert(beast::http::field::content_length, length_field);
@@ -78,6 +79,9 @@ void irods::s3::actions::handle_headobject(
            std::time_t last_write_time__time_t = std::chrono::system_clock::to_time_t(last_write_time__time_point);
            std::string last_write_time__str = irods::s3::api::common_routines::convert_time_t_to_str(last_write_time__time_t, date_format);
            response.insert(beast::http::field::last_modified, last_write_time__str);
+           log::debug("{}: returned {}", __FUNCTION__, response.reason());
+           session_ptr->send(std::move(response)); 
+           return;
        } else {
            response.result(boost::beast::http::status::not_found);
            log::debug("{}: returned {}", __FUNCTION__, response.reason());
