@@ -37,15 +37,15 @@ static const std::string date_format{"{:%Y-%m-%dT%H:%M:%S+00:00}"};
 void irods::s3::actions::handle_listbuckets(
     irods::http::session_pointer_type session_ptr,
     boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-    const boost::urls::url_view& url,
-    beast::http::response<beast::http::string_body>& response)
+    const boost::urls::url_view& url)
 {
     using namespace boost::property_tree;
+
+    beast::http::response<beast::http::empty_body> response;
 
     auto irods_username = irods::s3::authentication::authenticates(parser, url);
 
     if (!irods_username) {
-        beast::http::response<beast::http::empty_body> response;
         response.result(beast::http::status::forbidden);
         log::debug("{}: returned {}", __FUNCTION__, response.reason());
         session_ptr->send(std::move(response));
@@ -94,15 +94,18 @@ void irods::s3::actions::handle_listbuckets(
     }
     document.add("ListAllMyBucketsResult.Owner", "");
 
+    // convert emmpty_body response to string_body
+    beast::http::response<beast::http::string_body> string_body_response(std::move(response));
+
     std::stringstream s;
     boost::property_tree::xml_parser::xml_writer_settings<std::string> settings;
     settings.indent_char = ' ';
     settings.indent_count = 4;
     boost::property_tree::write_xml(s, document, settings);
-    response.body() = s.str();
+    string_body_response.body() = s.str();
     std::cout << s.str();
 
-    log::debug("{}: returned {}", __FUNCTION__, response.reason());
-    session_ptr->send(std::move(response));
+    log::debug("{}: returned {}", __FUNCTION__, string_body_response.reason());
+    session_ptr->send(std::move(string_body_response));
     return;
 }

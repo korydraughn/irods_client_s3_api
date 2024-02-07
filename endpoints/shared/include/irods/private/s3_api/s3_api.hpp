@@ -16,50 +16,42 @@ namespace irods::s3::actions
     void handle_listobjects_v2(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
     void handle_listbuckets(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
     void handle_getobject(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
     void handle_deleteobject(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
     void handle_putobject(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
     void handle_headobject(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
     void handle_headbucket(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
     void handle_copyobject(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-        const boost::urls::url_view& url,
-        boost::beast::http::response<boost::beast::http::string_body>& response);
+        const boost::urls::url_view& );
 
 } //namespace irods::s3::actions
 #endif

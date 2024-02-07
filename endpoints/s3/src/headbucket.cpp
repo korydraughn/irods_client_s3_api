@@ -19,9 +19,9 @@ namespace log = irods::http::log;
 void irods::s3::actions::handle_headbucket(
     irods::http::session_pointer_type session_ptr,
     boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-    const boost::urls::url_view& url,
-    beast::http::response<beast::http::string_body>& response)
+    const boost::urls::url_view& url)
 {
+    beast::http::response<beast::http::empty_body> response;
     response.result(beast::http::status::forbidden);
     try {
         auto irods_username = irods::s3::authentication::authenticates(parser, url);

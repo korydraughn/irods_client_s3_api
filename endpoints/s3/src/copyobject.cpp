@@ -17,9 +17,10 @@ namespace log = irods::http::log;
 void irods::s3::actions::handle_copyobject(
     irods::http::session_pointer_type session_ptr,
     boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
-    const boost::urls::url_view& url,
-    beast::http::response<beast::http::string_body>& response)
+    const boost::urls::url_view& url)
 {
+    beast::http::response<beast::http::empty_body> response;
+
     auto irods_username = irods::s3::authentication::authenticates(parser, url);
     if (!irods_username) {
         response.result(beast::http::status::forbidden);
@@ -62,7 +63,6 @@ void irods::s3::actions::handle_copyobject(
         fs::client::copy(conn, source_path, destination_path, fs::copy_options::overwrite_existing);
     }
     catch (irods::experimental::filesystem::filesystem_error& ex) {
-        beast::http::response<beast::http::empty_body> response;
         switch (ex.code().value()) {
                 // It's funny that it uses iRODS codes here in what seems likely to have been meant for
                 // things like ENOFILE or EPERM
@@ -90,8 +90,9 @@ void irods::s3::actions::handle_copyobject(
     // We don't have real etags, so using the md5 here would be confusing, as it would match any number of distinct
     // objects The most accurate representation of an Etag that I am aware of that we can get "for free" is using the
     // md5 sum appended to the path of the object. This makes it both content-sensitive and location sensitive.
-    response.body() = "<CopyObjectResult/>";
-    log::debug("{}: returned {}", __FUNCTION__, response.reason());
-    session_ptr->send(std::move(response)); 
+    beast::http::response<beast::http::string_body> string_body_response(std::move(response));
+    string_body_response.body() = "<CopyObjectResult/>";
+    log::debug("{}: returned {}", __FUNCTION__, string_body_response.reason());
+    session_ptr->send(std::move(string_body_response)); 
     return;
 }
