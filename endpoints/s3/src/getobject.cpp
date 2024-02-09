@@ -42,6 +42,8 @@ namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 namespace log = irods::http::log;
 
+const static std::string_view date_format{"{:%a, %d %b %Y %H:%M:%S GMT}"};
+
 void irods::s3::actions::handle_getobject(
     irods::http::session_pointer_type session_ptr,
     boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
@@ -134,10 +136,19 @@ void irods::s3::actions::handle_getobject(
             }
             auto content_length = range_end - range_start + 1;  // ranges are inclusive
 
+            // Set the Content-Length header
             std::string length_field = std::to_string(content_length);
             buffer_body_response.insert(beast::http::field::content_length, length_field);
+
+            // Get the file MD5 and set the Content-MD5 header
             auto md5 = irods::experimental::filesystem::client::data_object_checksum(conn, path);
             buffer_body_response.insert("Content-MD5", md5);
+
+            // Get the last write time and set the Last-Mofified header
+            auto last_write_time__time_point = irods::experimental::filesystem::client::last_write_time(conn, path);
+            std::time_t last_write_time__time_t = std::chrono::system_clock::to_time_t(last_write_time__time_point);
+            std::string last_write_time__str = irods::s3::api::common_routines::convert_time_t_to_str(last_write_time__time_t, date_format);
+            buffer_body_response.insert(beast::http::field::last_modified, last_write_time__str);
 
             irods::experimental::io::client::default_transport xtrans{conn};
             irods::experimental::io::idstream d{
