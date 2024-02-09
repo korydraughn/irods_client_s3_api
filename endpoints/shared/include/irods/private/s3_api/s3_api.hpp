@@ -33,6 +33,11 @@ namespace irods::s3::actions
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
         const boost::urls::url_view& );
 
+    void handle_deleteobjects(
+        irods::http::session_pointer_type sess_ptr,
+        boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+        const boost::urls::url_view& );
+
     void handle_putobject(
         irods::http::session_pointer_type sess_ptr,
         boost::beast::http::request_parser<boost::beast::http::string_body>& parser,

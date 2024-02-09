@@ -273,6 +273,22 @@ namespace irods::http
 			        });
                 }
                 break;
+            case boost::beast::http::verb::post:
+                // check for DeleteObjects
+                if (params.contains("delete")) {
+		            log::debug("{}: DeleteObjects detected", __func__);
+                    auto shared_this = shared_from_this();
+		            irods::http::globals::background_task(
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_deleteobjects(shared_this, *parser, url_view);
+			        });
+                    break;
+                }
+                // allow this to go to default:
             default:
 		        log::error("{}: Someone tried to make an HTTP request with a method that is not yet supported", __func__);
                 send(irods::http::fail(http::status::not_implemented));

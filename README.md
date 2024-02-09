@@ -12,7 +12,7 @@ Initial effort includes:
   - CompleteMultipartUpload
   - CreateMultipartUpload
   - [x] DeleteObject
-  - DeleteObjects
+  - [x] DeleteObjects
   - [x] GetBucketLocation
   - [x] GetObject
   - GetObjectAcl ?
