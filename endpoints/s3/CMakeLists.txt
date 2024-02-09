@@ -6,6 +6,7 @@ add_library(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/getobject.cpp"
   #"${CMAKE_CURRENT_SOURCE_DIR}/src/putobject.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/deleteobject.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/deleteobjects.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/headobject.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/headbucket.cpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/copyobject.cpp"
