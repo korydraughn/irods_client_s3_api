@@ -71,7 +71,7 @@ namespace
         return r;
     }
     std::string canonicalize_request(
-        const static_buffer_request_parser& parser,
+        const boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
         const boost::urls::url_view& url,
         const std::vector<std::string>& signed_headers)
     {
@@ -179,7 +179,7 @@ namespace
     }
 
     std::string string_to_sign(
-        const static_buffer_request_parser& parser,
+        const boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
         const std::string_view date,
         const std::string_view region,
         const std::string_view canonical_request)
@@ -193,7 +193,7 @@ namespace
     }
 } //namespace
 std::optional<std::string> irods::s3::authentication::authenticates(
-    const static_buffer_request_parser& parser,
+    const boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
     const boost::urls::url_view& url)
 {
     namespace log = irods::http::log;

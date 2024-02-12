@@ -36,7 +36,7 @@ static const std::string date_format{"{:%Y-%m-%dT%H:%M:%S+00:00}"};
 
 void irods::s3::actions::handle_listbuckets(
     irods::http::session_pointer_type session_ptr,
-    boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+    boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
     const boost::urls::url_view& url)
 {
     using namespace boost::property_tree;
@@ -73,7 +73,7 @@ void irods::s3::actions::handle_listbuckets(
                 "select COLL_CREATE_TIME where COLL_NAME = '{}'",
                 collection.get_ref<const std::string&>());
 
-        std::cout << "query: " << query << std::endl;
+        log::debug("{}: query = {}", __FUNCTION__, query);
 
         for (auto&& row : irods::query<RcComm>(rcComm_t_ptr, query)) {
             found = true;
@@ -94,7 +94,7 @@ void irods::s3::actions::handle_listbuckets(
     }
     document.add("ListAllMyBucketsResult.Owner", "");
 
-    // convert emmpty_body response to string_body
+    // convert empty_body response to string_body
     beast::http::response<beast::http::string_body> string_body_response(std::move(response));
 
     std::stringstream s;
@@ -103,8 +103,7 @@ void irods::s3::actions::handle_listbuckets(
     settings.indent_count = 4;
     boost::property_tree::write_xml(s, document, settings);
     string_body_response.body() = s.str();
-    std::cout << s.str();
-
+    log::debug("{}: return string:\n{}", __FUNCTION__, s.str());
     log::debug("{}: returned {}", __FUNCTION__, string_body_response.reason());
     session_ptr->send(std::move(string_body_response));
     return;

@@ -41,7 +41,7 @@ namespace log = irods::http::log;
 
 void irods::s3::actions::handle_deleteobject(
         irods::http::session_pointer_type session_ptr,
-        boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+        boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
         const boost::urls::url_view& url)
 {
     beast::http::response<beast::http::empty_body> response;

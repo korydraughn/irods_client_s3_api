@@ -46,20 +46,25 @@ namespace log = irods::http::log;
 
 void irods::s3::actions::handle_deleteobjects(
         irods::http::session_pointer_type session_ptr,
-        boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+        boost::beast::http::request_parser<boost::beast::http::empty_body>& empty_body_parser,
         const boost::urls::url_view& url)
 {
     beast::http::response<beast::http::string_body> response;
 
     // Permission verification stuff should go roughly here.
 
-    auto irods_username = irods::s3::authentication::authenticates(parser, url);
+    auto irods_username = irods::s3::authentication::authenticates(empty_body_parser, url);
     if (!irods_username) {
         response.result(beast::http::status::forbidden);
         log::debug("{}: returned {}", __FUNCTION__, response.reason());
         session_ptr->send(std::move(response)); 
         return;
     }
+
+    // change the parser to a string_body parser and read the body
+    empty_body_parser.eager(true);
+    beast::http::request_parser<boost::beast::http::string_body> parser{std::move(empty_body_parser)};
+    beast::http::read(session_ptr->stream().socket(), session_ptr->get_buffer(), parser);
 
     // Reconnect to the iRODS server as the target user.
     // The rodsadmin account from the config file will act as the proxy for the user.
