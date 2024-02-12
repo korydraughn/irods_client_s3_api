@@ -28,7 +28,7 @@
 namespace irods::http
 {
     void get_url_from_parser(
-        boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+        boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
         boost::urls::url& url)
     {
         auto& message = parser.get();
@@ -81,7 +81,8 @@ namespace irods::http
 		stream_.expires_after(std::chrono::seconds(timeout_in_secs_));
 
 		// Read a request.
-		boost::beast::http::async_read(
+        //parser_->eager(false);
+		boost::beast::http::async_read_header(
 			stream_, buffer_, *parser_, boost::beast::bind_front_handler(&session::on_read, shared_from_this()));
 	} // do_read
 
@@ -210,23 +211,30 @@ namespace irods::http
                 break;
             case boost::beast::http::verb::put:
                 if (req_.find("x-amz-copy-source") != req_.end()) {
-		                log::debug("{}: CopyObject detected", __func__);
-                        auto shared_this = shared_from_this();
-		                irods::http::globals::background_task(
-		                	[shared_this, &parser = this->parser_]() mutable {
-                            // build the url_view - must be done within background task as url_view is not copyable
-                            boost::urls::url url;
-                            get_url_from_parser(*parser, url);
-                            boost::urls::url_view url_view = url;
-                            irods::s3::actions::handle_copyobject(shared_this, *parser, url_view);
-			            });
+		            log::debug("{}: CopyObject detected", __func__);
+                    auto shared_this = shared_from_this();
+		            irods::http::globals::background_task(
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_copyobject(shared_this, *parser, url_view);
+			        });
                 }
-                /*else {
+                else {
                     // putobject
-                    std::cout << "putobject detected" << std::endl;
-                    co_await irods::s3::actions::handle_putobject(socket, parser, url);
-                    co_return;
-                }*/
+		            log::debug("{}: PutObject detected", __func__);
+                    auto shared_this = shared_from_this();
+		            irods::http::globals::background_task(
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_putobject(shared_this, *parser, url_view);
+			        });
+                }
                 break;
             case boost::beast::http::verb::delete_:
                 if (segments.empty()) {
@@ -286,9 +294,32 @@ namespace irods::http
                         boost::urls::url_view url_view = url;
                         irods::s3::actions::handle_deleteobjects(shared_this, *parser, url_view);
 			        });
-                    break;
                 }
-                // allow this to go to default:
+                else if (const auto upload_id_param = url.params().find("uploadId"); upload_id_param != url.params().end()) {
+		            log::debug("{}: CompleteMultipartUpload detected", __func__);
+                    auto shared_this = shared_from_this();
+		            irods::http::globals::background_task(
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_completemultipartupload(shared_this, *parser, url_view);
+			        });
+                } 
+                else {
+		            log::debug("{}: CreateMultipartUpload detected", __func__);
+                    auto shared_this = shared_from_this();
+		            irods::http::globals::background_task(
+		            	[shared_this, &parser = this->parser_]() mutable {
+                        // build the url_view - must be done within background task as url_view is not copyable
+                        boost::urls::url url;
+                        get_url_from_parser(*parser, url);
+                        boost::urls::url_view url_view = url;
+                        irods::s3::actions::handle_createmultipartupload(shared_this, *parser, url_view);
+			        });
+                }
+                break;
             default:
 		        log::error("{}: Someone tried to make an HTTP request with a method that is not yet supported", __func__);
                 send(irods::http::fail(http::status::not_implemented));

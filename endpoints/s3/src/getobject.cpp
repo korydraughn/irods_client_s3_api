@@ -46,7 +46,7 @@ const static std::string_view date_format{"{:%a, %d %b %Y %H:%M:%S GMT}"};
 
 void irods::s3::actions::handle_getobject(
     irods::http::session_pointer_type session_ptr,
-    boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+    beast::http::request_parser<boost::beast::http::empty_body>& parser,
     const boost::urls::url_view& url)
 {
     beast::http::response<beast::http::empty_body> response;
@@ -71,7 +71,7 @@ void irods::s3::actions::handle_getobject(
     }
     else {
         log::error("{}: Failed to resolve bucket", __FUNCTION__);
-        response.result(beast::http::status::forbidden);
+        response.result(beast::http::status::not_found);
         log::debug("{}: returned {}", __FUNCTION__, response.reason());
         session_ptr->send(std::move(response)); 
         return;
@@ -170,6 +170,7 @@ void irods::s3::actions::handle_getobject(
             beast::http::write_header(session_ptr->stream().socket(), serializer, ec);
             if (ec) {
                 buffer_body_response.result(beast::http::status::internal_server_error);
+                log::debug("{}: returned {}", __FUNCTION__, buffer_body_response.reason());
                 session_ptr->send(std::move(buffer_body_response)); 
                 return;
             }

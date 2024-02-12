@@ -26,7 +26,7 @@ namespace log = irods::http::log;
 
 void irods::s3::actions::handle_createmultipartupload(
     irods::http::session_pointer_type session_ptr,
-    static_buffer_request_parser& parser,
+    boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
     const boost::urls::url_view& url)
 {
     beast::http::response<beast::http::empty_body> response;
@@ -41,7 +41,7 @@ void irods::s3::actions::handle_createmultipartupload(
         return;
     }
 
-    auto conn = irods::s3::get_connection(*irods_username);
+    auto conn = irods::get_connection(*irods_username);
     
     std::filesystem::path s3_bucket;
     std::filesystem::path s3_key;
@@ -59,7 +59,7 @@ void irods::s3::actions::handle_createmultipartupload(
     log::debug("{} s3_bucket={} s3_key={}", __FUNCTION__, s3_bucket.string(), s3_key.string());
 
     fs::path path;
-    if (auto bucket = irods::s3::resolve_bucket(*conn, url.segments()); bucket.has_value()) {
+    if (auto bucket = irods::s3::resolve_bucket(conn, url.segments()); bucket.has_value()) {
         path = bucket.value();
         path = irods::s3::finish_path(path, url.segments());
         log::debug("{}: CreateMultipartUpload path={}", __FUNCTION__, path.string());

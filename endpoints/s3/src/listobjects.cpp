@@ -35,7 +35,7 @@ const static std::string_view date_format{"{:%Y-%m-%dT%H:%M:%S.000Z}"};
 
 void irods::s3::actions::handle_listobjects_v2(
     irods::http::session_pointer_type session_ptr,
-    boost::beast::http::request_parser<boost::beast::http::string_body>& parser,
+    boost::beast::http::request_parser<boost::beast::http::empty_body>& parser,
     const boost::urls::url_view& url)
 {
     using namespace boost::property_tree;
@@ -256,7 +256,6 @@ void irods::s3::actions::handle_listobjects_v2(
     settings.indent_count = 4;
     boost::property_tree::write_xml(s, document, settings);
     string_body_response.body() = s.str();
-    std::cout << s.str();
 
     log::debug("{}: response body {}", __FUNCTION__, s.str());
     log::debug("{}: returned {}", __FUNCTION__, string_body_response.reason());
