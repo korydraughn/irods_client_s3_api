@@ -364,11 +364,11 @@ constexpr auto default_jsonschema() -> std::string_view
                 "resource": {{
                     "type": "string"
                 }},
-                "max_number_of_bytes_per_read_operation": {{
+                "put_object_buffer_size_in_bytes": {{
                     "type": "integer",
                     "minimum": 1
                 }},
-                "buffer_size_in_bytes_for_write_operations": {{
+                "get_object_buffer_size_in_bytes": {{
                     "type": "integer",
                     "minimum": 1
                 }}
@@ -380,11 +380,7 @@ constexpr auto default_jsonschema() -> std::string_view
                 "enable_4_2_compatibility",
                 "proxy_admin_account",
                 "connection_pool",
-                "resource",
-                "max_number_of_parallel_write_streams",
-                "max_number_of_bytes_per_read_operation",
-                "buffer_size_in_bytes_for_write_operations",
-                "max_number_of_rows_per_catalog_query"
+                "resource"
             ]
         }}
     }},
@@ -476,8 +472,8 @@ auto print_configuration_template() -> void
 
         "resource": "<string>",
 
-        "max_number_of_bytes_per_read_operation": 8192,
-        "buffer_size_in_bytes_for_write_operations": 8192
+        "put_object_buffer_size_in_bytes": 8192,
+        "get_object_buffer_size_in_bytes": 8192
     }}
 }}
 )");

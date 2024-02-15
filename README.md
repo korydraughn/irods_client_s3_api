@@ -414,12 +414,13 @@ Notice how some of the configuration values are wrapped in angle brackets (e.g. 
         // The resource to target for all write operations.
         "resource": "<string>",
 
-        // The maximum number of bytes that can be read from a data object
-        // during a single read operation.
-        "max_number_of_bytes_per_read_operation": 8192,
+        // The buffer size used to read objects from the client
+        // and write to iRODS.
+        "put_object_buffer_size_in_bytes": 8192,
 
-        // The buffer size used for write operations.
-        "buffer_size_in_bytes_for_write_operations": 8192
+        // The buffer size used to read objects from iRODS
+        // and send to the client.
+        "get_object_buffer_size_in_bytes": 8192
     }
 }
 ```
