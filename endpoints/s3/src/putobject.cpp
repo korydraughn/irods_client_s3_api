@@ -174,8 +174,7 @@ void irods::s3::actions::handle_putobject(
     }
 
     uint64_t read_buffer_size = irods::s3::get_put_object_buffer_size_in_bytes();
-    uint64_t max_read_buffer_size = irods::s3::get_put_object_max_buffer_size_in_bytes();
-    log::debug("{}: read_buffer_size={} max_read_buffer_size={}", __FUNCTION__, read_buffer_size, max_read_buffer_size);
+    log::debug("{}: read_buffer_size={}", __FUNCTION__, read_buffer_size);
 
     std::vector<char> buf_vector(read_buffer_size);
     parser_message.body().data = buf_vector.data();
@@ -188,12 +187,18 @@ void irods::s3::actions::handle_putobject(
         log::debug("{}: read_buffer_size={}", __FUNCTION__, read_buffer_size);
 
         boost::beast::error_code ec;
+        bool need_more = true;
 
         enum class parsing_state {
             header_begin, header_continue, body, end_of_chunk, parsing_done, parsing_error
         };
 
         parsing_state current_state = parsing_state::header_begin;
+
+        // This is a string that holds input bytes temporarily as they are being read
+        // from the stream.  This chunk parser will only read more bytes into this
+        // when necessary to continue parsing.  Once bytes are no longer needed they are
+        // discarded from this variable.
         std::string the_bytes;
 
         size_t chunk_size = 0;
@@ -203,30 +208,24 @@ void irods::s3::actions::handle_putobject(
         while (!parser.is_done() || !the_bytes.empty()) {
 
             // check to see if we are done parsing the chunks
-            if (current_state == parsing_state::parsing_done || current_state == parsing_state::parsing_error) {
+            if (current_state == parsing_state::parsing_done) {
                 break;
             }
 
             parser_message.body().data = buf_vector.data();
             parser_message.body().size = read_buffer_size;
             
-            if (!parser.is_done()) {
+            if (!parser.is_done() && need_more) {
+
                 // The eager option instructs the parser to continue reading the buffer once it has completed a
                 // structured element (header, chunk header, chunk body). Since we are handling the parsing ourself,
                 // we want the parser to give us as much as is available.
                 parser.eager(true);
                 beast::http::read_some(session_ptr->stream().socket(), session_ptr->get_buffer(), parser, ec);
 
-                // The need_buffer exception is an indication that the current buffer
-                // is not large enough for the parser to handle the request.  Double
-                // the buffer size up to a maximum allowed buffer size.
                 if(ec == beast::http::error::need_buffer) {
-                    read_buffer_size *= 2;
-                    if (read_buffer_size > max_read_buffer_size) {
-                        read_buffer_size = max_read_buffer_size;
-                    }
-                    buf_vector.resize(read_buffer_size);
-                    log::debug("{}: read_buffer_size updated to {}", __FUNCTION__, read_buffer_size);
+                    // Need buffer indicates the current buffer was filled (new size value is zero).
+                    // We read the bytes on each iteration and reset the buffer so no action is needed. 
                     ec = {};
                 }
                 if(ec) {
@@ -236,10 +235,13 @@ void irods::s3::actions::handle_putobject(
                     session_ptr->send(std::move(response));
                     return;
                 }
-            }
 
-            size_t read_bytes = read_buffer_size - parser_message.body().size;
-            the_bytes.append(buf_vector.data(), read_bytes);
+                size_t read_bytes = read_buffer_size - parser_message.body().size;
+                the_bytes.append(buf_vector.data(), read_bytes);
+
+                // Don't get more bytes until we detect we need them.
+                need_more = false;
+            }
 
             switch (current_state) {
                 case parsing_state::header_begin:
@@ -249,8 +251,8 @@ void irods::s3::actions::handle_putobject(
                     // 2. Without extensions: <hex>\r\n
                     
                     // See if it is of form 1.
-                    size_t colon_location = the_bytes.find (";");
-                    if (colon_location == std::string::npos) {
+                    size_t semicolon_location = the_bytes.find (";");
+                    if (semicolon_location == std::string::npos) {
 
                         // Not form 1.  See if it is form 2.
                         size_t newline_location = the_bytes.find("\r\n");
@@ -267,7 +269,7 @@ void irods::s3::actions::handle_putobject(
                                 // eat the bytes up to and including \r\n 
                                 the_bytes = the_bytes.substr(newline_location+2);
                                 if (chunk_size == 0) {
-                                    current_state = parsing_state::parsing_done;
+                                    current_state = parsing_state::end_of_chunk;
                                 } else {
                                     current_state = parsing_state::body;
                                 }
@@ -275,9 +277,16 @@ void irods::s3::actions::handle_putobject(
                                 log::error("{}: bad chunk size: {}", __FUNCTION__, chunk_size_str);
                                 current_state = parsing_state::parsing_error;
                             }
-                        }   
+                        } else if (!parser.is_done()) {
+                            need_more = true;
+                        } else {
+                            // we have received all of the bytes but do not have "<hex>\r\n" sequence
+                            log::error("{}: Malformed chunk header", __FUNCTION__);
+                            current_state = parsing_state::parsing_error;
+                        }
                     } else {
-                        std::string chunk_size_str = the_bytes.substr(0, colon_location);
+                        // semicolon found
+                        std::string chunk_size_str = the_bytes.substr(0, semicolon_location);
                         size_t hex_digits_parsed = 0;
                         try {
                            chunk_size = stoull(chunk_size_str, &hex_digits_parsed, 16);
@@ -285,8 +294,8 @@ void irods::s3::actions::handle_putobject(
                             hex_digits_parsed = 0;
                         }
                         if (hex_digits_parsed == chunk_size_str.length()) {
-                            // eat the bytes up to and including colon
-                            the_bytes = the_bytes.substr(colon_location+1);
+                            // eat the bytes up to and including semicolon
+                            the_bytes = the_bytes.substr(semicolon_location+1);
                             current_state = parsing_state::header_continue;
                         } else {
                             log::error("{}: bad chunk size: {}", __FUNCTION__, chunk_size_str);
@@ -308,16 +317,21 @@ void irods::s3::actions::handle_putobject(
                         } else {
                             current_state = parsing_state::body;
                         }
+                    } else if (!parser.is_done()) {
+                        need_more = true;
+                    } else {
+                        // we have read all the bytes but do not have a \r\n at the end
+                        // of the header line
+                        log::error("{}: Malformed chunk header", __FUNCTION__);
+                        current_state = parsing_state::parsing_error;
                     }
                     break;
                 }
                 case parsing_state::body:
                 {
-                    size_t ss_size = the_bytes.length();
-
                     // if we have the full chunk, handle it otherwise continue
                     // until we do
-                    if (ss_size >= chunk_size) {
+                    if (the_bytes.length() >= chunk_size) {
                         std::string body = the_bytes.substr(0, chunk_size);
 
                         try {
@@ -338,11 +352,32 @@ void irods::s3::actions::handle_putobject(
                         // reset string stream and set it to after the \r\n
                         the_bytes = the_bytes.substr(chunk_size);
                         current_state = parsing_state::end_of_chunk;
+                    } else {
+                        // Note to save memory we could stream the bytes we have, decrease
+                        // chunk size, and discard these bytes.
+                        need_more = true;
                     }
                     break;
                 }
                 case parsing_state::end_of_chunk:
                 {
+                    // If the size of the_bytes is just one and consists of "\r"
+                    // then we need to get more bytes.
+                    if (!parser.is_done() && the_bytes.size() == 1 && the_bytes[0] == '\r') {
+                        // we don't have enough bytes to read the expected "\r\n"
+                        // but there are more bytes to be read
+                        need_more = true;
+                        break;
+                    }
+
+                    // If the size is 0 then we need to get more bytes.
+                    if (!parser.is_done() && the_bytes.size() == 0) {
+                        // we don't have enough bytes to read the expected "\r\n"
+                        // but there are more bytes to be read
+                        need_more = true;
+                        break;
+                    }
+
                     size_t newline_location = the_bytes.find("\r\n");
                     if (newline_location != 0) {
                         log::error("{}: Invalid chunk end sequence", __FUNCTION__);
@@ -375,23 +410,19 @@ void irods::s3::actions::handle_putobject(
             parser_message.body().data = buf_vector.data();
             parser_message.body().size = read_buffer_size;
             beast::http::read_some(session_ptr->stream(), session_ptr->get_buffer(), parser, ec);
+
+            // Before read, the parser_message.body().size is the size of the buffer.
+            // After read, parser_message.body().size is the size of the part of the 
+            // buffer that was used/read into.  So, the number of bytes read is the buffer size
+            // minus the new parser_message.body().size.
             size_t read_bytes = read_buffer_size - parser_message.body().size;
 
             std::string the_bytes{buf_vector.data(), read_bytes};
 
-            // The need_buffer exception is an indication that the current buffer
-            // is not large enough for the parser to handle the request.  Double
-            // the buffer size up to a maximum allowed buffer size.
             if (ec == beast::http::error::need_buffer) {
-                if (read_buffer_size < max_read_buffer_size) {
-                    read_buffer_size *= 2;
-                    if (read_buffer_size > max_read_buffer_size) {
-                        read_buffer_size = max_read_buffer_size;
-                    }
-                    buf_vector.resize(read_buffer_size);
-                    log::debug("{}: read_buffer_size updated to {}", __FUNCTION__, read_buffer_size);
-                    ec = {};
-                }
+                // Need buffer indicates the current buffer was filled (new size value is zero).
+                // We read the bytes on each iteration and reset the buffer so no action is needed. 
+                ec = {};
             }
 
             if (ec) {
