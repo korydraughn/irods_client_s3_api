@@ -39,7 +39,7 @@ void irods::s3::actions::handle_headobject(
        auto conn = irods::get_connection(*irods_username); 
 
        fs::path path;
-       if (auto bucket = irods::s3::resolve_bucket(conn, url.segments()); bucket.has_value()) {
+       if (auto bucket = irods::s3::resolve_bucket(url.segments()); bucket.has_value()) {
            path = bucket.value();
            path = irods::s3::finish_path(path, url.segments());
        }
@@ -87,6 +87,13 @@ void irods::s3::actions::handle_headobject(
            log::debug("{}: returned {}", __FUNCTION__, response.reason());
            session_ptr->send(std::move(response)); 
            return;
+           /*return irods::s3::api::common_routines::send_error_response(
+                   session_ptr,
+                   boost::beast::http::status::not_found,
+                   "NoSuchKey",
+                   "Object does not exist",
+                   url.path(),
+                   __FUNCTION__);*/
        }
     }
     catch (std::system_error& e) {

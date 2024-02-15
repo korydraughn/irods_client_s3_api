@@ -7,10 +7,12 @@
 #include "irods/private/s3_api/common.hpp"
 #include "irods/private/s3_api/session.hpp"
 #include "irods/private/s3_api/configuration.hpp"
+#include "irods/private/s3_api/globals.hpp"
 
 #include <irods/dstream.hpp>
 #include <irods/transport/default_transport.hpp>
 #include <irods/irods_exception.hpp>
+#include <irods/irods_at_scope_exit.hpp>
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -22,13 +24,41 @@
 #include <fmt/format.h>
 #include <regex>
 #include <cstdio>
+#include <vector>
+#include <mutex>
+#include <condition_variable>
+#include <memory>
+#include <thread>
+#include <chrono>
+#include <string>
+#include <sstream>
 
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 namespace log = irods::http::log;
 
-static std::regex upload_id_pattern("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+namespace {
+
+    std::regex upload_id_pattern("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+
+    // store offsets and lengths for each part
+    struct part_info_t {
+        std::string part_filename;
+        uint64_t part_offset;
+        uint64_t part_size;
+    };
+
+    struct upload_status_t {
+        /*upload_status_t()
+            : task_done_counter(0)
+            , fail_flag(false)
+        {}*/
+        int task_done_counter = 0;
+        bool fail_flag = false;
+        std::string error_string;
+    };
+}
 
 void irods::s3::actions::handle_completemultipartupload(
     irods::http::session_pointer_type session_ptr,
@@ -65,7 +95,7 @@ void irods::s3::actions::handle_completemultipartupload(
     log::debug("{} s3_bucket={} s3_key={}", __FUNCTION__, s3_bucket.string(), s3_key.string());
 
     fs::path path;
-    if (auto bucket = irods::s3::resolve_bucket(conn, url.segments()); bucket.has_value()) {
+    if (auto bucket = irods::s3::resolve_bucket(url.segments()); bucket.has_value()) {
         path = bucket.value();
         path = irods::s3::finish_path(path, url.segments());
         log::debug("{}: CompleteMultipartUpload path={}", __FUNCTION__, path.string());
@@ -175,61 +205,185 @@ void irods::s3::actions::handle_completemultipartupload(
         return;
     }
 
-    // Very naive approach follows (for now)
+    // build up a vector filenames, offsets, and lengths for each part
+    std::vector<part_info_t> part_info_vector;
+    part_info_vector.reserve(max_part_number);
 
-    // get connection and transport
-    irods::experimental::io::client::default_transport xtrans{conn};
+    // get the base location for the part files
+    const nlohmann::json& config = irods::http::globals::configuration();
+    std::string part_file_location = config.value(
+            nlohmann::json::json_pointer{"/s3_server/location_part_upload_files"}, ".");
 
-    // read/write vector
+    uint64_t offset_counter = 0;
+    for (int current_part_number = 1; current_part_number <= max_part_number; ++current_part_number) {
+        std::string part_filename = part_file_location + "/" + upload_id + "." + std::to_string(current_part_number);
+        try {
+            auto part_size = std::filesystem::file_size(part_filename);
+            part_info_vector.push_back({part_filename, offset_counter, part_size});
+            offset_counter += part_size;
+        } catch (fs::filesystem_error& e) {
+            log::error("{}: Failed locate part", __FUNCTION__);
+            response.result(beast::http::status::internal_server_error);
+            log::debug("{}: returned {}", __FUNCTION__, response.reason());
+            session_ptr->send(std::move(response));
+            return;
+        }
+    }
+
     uint64_t read_buffer_size = irods::s3::get_put_object_buffer_size_in_bytes();
-    std::vector<char> buf_vector(read_buffer_size);
 
-    // open dstream to write to iRODS
+    upload_status_t upload_status;
+    std::condition_variable cv;
+    std::mutex cv_mutex;
+
+    // This thread will create the file then wait until all threads are done or an error occurs. 
+    irods::experimental::io::client::default_transport xtrans{conn};
     irods::experimental::io::odstream d;  // irods dstream for writing directly to irods
-    d.open(xtrans, path, irods::experimental::io::root_resource_name{irods::s3::get_resource()}, std::ios_base::out);
+    d.open(xtrans, path, irods::experimental::io::root_resource_name{irods::s3::get_resource()}, std::ios::out | std::ios::trunc);
+
     if (!d.is_open()) {
-        log::error("{}: Failed to open dstream to iRODS - path={}", __FUNCTION__, path.string());
+        log::error("{}: {} Failed open data stream to iRODS - path={}", __FUNCTION__, upload_id, path.string());
         response.result(beast::http::status::internal_server_error);
         log::debug("{}: returned {}", __FUNCTION__, response.reason());
         session_ptr->send(std::move(response));
         return;
     }
 
-    // iterate through parts and write to iRODS
+    auto& replica_token = d.replica_token();
+    auto& replica_number = d.replica_number();
+
+    // start tasks on thread pool for part uploads 
     for (int current_part_number = 1; current_part_number <= max_part_number; ++current_part_number) {
+        log::debug("{}: pushing upload work on thread pool {}-{} : [filename={}][offset={}][size={}]",
+                __FUNCTION__,
+                upload_id,
+                current_part_number,
+                part_info_vector[current_part_number-1].part_filename,
+                part_info_vector[current_part_number-1].part_offset,
+                part_info_vector[current_part_number-1].part_size);
 
-        // open stream for reading the current part
-        std::string upload_part_filename;
-        upload_part_filename = upload_id + "." + std::to_string(current_part_number);
 
-        std::ifstream ifs;
-        ifs.open(upload_part_filename, std::ifstream::in); 
-        if (!ifs.is_open()) {
-            log::error("{}: Failed to open stream for reading part", __FUNCTION__);
-            response.result(beast::http::status::internal_server_error);
-            log::debug("{}: returned {}", __FUNCTION__, response.reason());
-            session_ptr->send(std::move(response));
-            return;
-        }
+        irods::http::globals::background_task([session_ptr,
+            irods_username,
+            path,
+            &cv_mutex,
+            &cv,
+            &upload_status,
+            &replica_token,
+            &replica_number,
+            current_part_number,
+            upload_id,
+            part_filename = part_info_vector[current_part_number-1].part_filename,
+            part_offset = part_info_vector[current_part_number-1].part_offset,
+            part_size = part_info_vector[current_part_number-1].part_size,  // don't really need this
+            read_buffer_size,
+            func = __FUNCTION__]() mutable {
 
-        // read the file in parts into buffer and stream to iRODS
-        while (ifs)
-        {
-            // Try to read next chunk of data
-            ifs.read(buf_vector.data(), read_buffer_size);
-            size_t read_bytes = ifs.gcount();
-            if (!read_bytes) {
-                break;
+            uint64_t read_write_byte_counter = 0;
+
+            // upon exit, increment the task_done_counter and notify the coordinating thread
+            const irods::at_scope_exit signal_done{ [&cv_mutex, &cv, &upload_status, upload_id, current_part_number, part_offset, part_size, &read_write_byte_counter, func]() {
+               {
+                   std::lock_guard<std::mutex> lk(cv_mutex);
+                   (upload_status.task_done_counter)++;
+               }
+               log::debug("{}: upload_id={} part_number={} wrote {} bytes at offset {} - part_size={}", func, upload_id, current_part_number, read_write_byte_counter, part_offset, part_size);
+               cv.notify_one();
+            }};
+
+            // create a read/write buffer
+            std::vector<char> buf_vector(read_buffer_size);
+
+            // open the part file
+            std::ifstream ifs;
+            ifs.open(part_filename, std::ifstream::in); 
+
+            if (!ifs.is_open()) {
+                std::lock_guard<std::mutex> lk(cv_mutex);
+                upload_status.fail_flag = true;
+                std::stringstream ss;
+                ss << "Failed to part file for reading" << part_filename;
+                upload_status.error_string = ss.str(); 
+                log::error("{}: {} upload_id={} part_number={}", func, upload_status.error_string, upload_id, current_part_number);
+                return;
             }
-            d.write((char*) buf_vector.data(), read_bytes);
-        }
+
+            // open dstream for writing to iRODS
+            auto conn = irods::get_connection(*irods_username);
+            irods::experimental::io::client::default_transport xtrans{conn};
+            irods::experimental::io::dstream ds;  // irods dstream for writing directly to irods
+            ds.open(xtrans, replica_token, path, irods::experimental::io::replica_number{replica_number}); //, std::ios::out | std::ios::ate);
+
+
+            if (!ds.is_open()) {
+                std::lock_guard<std::mutex> lk(cv_mutex);
+                upload_status.fail_flag = true;
+                std::stringstream ss;
+                ss << "Failed to open dstream to iRODS path=" << path;
+                upload_status.error_string = ss.str(); 
+                log::error("{}: {} upload_id={} part_number={}", func, upload_status.error_string, upload_id, current_part_number);
+                return;
+            }
+
+            // seek to start of part
+            ds.seekp(part_offset);
+
+            // read the file in parts into buffer and stream to iRODS
+            while (ifs)
+            {
+                // if someone failed then bail
+                {
+                    std::lock_guard<std::mutex> lk(cv_mutex);
+                    if (upload_status.fail_flag) {
+                        break;
+                    }
+                }
+
+                // Try to read next chunk of data
+                ifs.read(buf_vector.data(), read_buffer_size);
+                size_t read_bytes = ifs.gcount();
+                read_write_byte_counter += read_bytes;
+                if (read_bytes) {
+                    ds.write((char*) buf_vector.data(), read_bytes);
+
+                    if (ds.fail()) {
+                        std::lock_guard<std::mutex> lk(cv_mutex);
+                        upload_status.fail_flag = true;
+                        upload_status.error_string = "Failed in writing part to iRODS";
+                        log::error("{}: {} upload_id={} part_number={}", func, upload_status.error_string, upload_id, current_part_number);
+                        break;
+                    }
+                }
+
+            }
+
+            ds.close();
+            ifs.close();
+            return;
+        });
     }
 
-    // delete the parts
-    for (int current_part_number = 1; current_part_number <= max_part_number; ++current_part_number) {
-        std::string upload_part_filename;
-        upload_part_filename = upload_id + "." + std::to_string(current_part_number);
-        std::remove(upload_part_filename.c_str());
+    // wait until all threads are complete
+    // TODO: put a timer on this
+    std::unique_lock<std::mutex> lk(cv_mutex);
+    cv.wait(lk, [&upload_status, max_part_number, func = __FUNCTION__]() {
+            log::debug("{}: wait: task_done_counter is {}", func, upload_status.task_done_counter);
+            return upload_status.task_done_counter == max_part_number; });
+
+    d.close();
+
+    // remove the temporary part files - should we do this on failure?
+    for (int i = 0; i < max_part_number; ++i) {
+        std::remove(part_info_vector[i].part_filename.c_str());
+    }
+
+    // check to see if any threads failed
+    if (upload_status.fail_flag) {
+        log::error("{}: {}", __FUNCTION__, upload_status.error_string);
+        response.result(beast::http::status::internal_server_error);
+        log::debug("{}: returned {}", __FUNCTION__, response.reason());
+        session_ptr->send(std::move(response));
+        return;
     }
 
     // Now send the response

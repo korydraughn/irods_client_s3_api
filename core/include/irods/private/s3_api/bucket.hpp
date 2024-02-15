@@ -11,7 +11,6 @@ namespace irods::s3
     /// \param connection The connection to the irods server.
     /// \param view The view of the url's segments.
     std::optional<irods::experimental::filesystem::path> resolve_bucket(
-        rcComm_t& connection,
         const boost::urls::segments_view& view);
 
     /// Get the final path of the given bucket in the request.

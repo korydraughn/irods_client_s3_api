@@ -71,7 +71,7 @@ void irods::s3::actions::handle_deleteobjects(
     auto conn = irods::get_connection(*irods_username);
 
     fs::path path;
-    if (auto bucket = irods::s3::resolve_bucket(conn, url.segments()); bucket.has_value()) {
+    if (auto bucket = irods::s3::resolve_bucket(url.segments()); bucket.has_value()) {
         path = bucket.value();
     }
     else {
