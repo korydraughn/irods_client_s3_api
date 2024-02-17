@@ -60,7 +60,7 @@ std::vector<std::string> list_buckets([[maybe_unused]] rcComm_t* connection, con
 }
 
 // Produces the basic irods path of the bucket. This will need concatenation with the remainder of the key.
-std::optional<fs::path> irods::s3::resolve_bucket([[maybe_unused]] rcComm_t& connection, const boost::urls::segments_view& view)
+std::optional<fs::path> irods::s3::resolve_bucket(const boost::urls::segments_view& view)
 {
     if (!buckets.has_value()) {
         const nlohmann::json& config = irods::http::globals::configuration();

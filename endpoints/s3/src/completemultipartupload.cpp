@@ -65,7 +65,7 @@ void irods::s3::actions::handle_completemultipartupload(
     log::debug("{} s3_bucket={} s3_key={}", __FUNCTION__, s3_bucket.string(), s3_key.string());
 
     fs::path path;
-    if (auto bucket = irods::s3::resolve_bucket(conn, url.segments()); bucket.has_value()) {
+    if (auto bucket = irods::s3::resolve_bucket(url.segments()); bucket.has_value()) {
         path = bucket.value();
         path = irods::s3::finish_path(path, url.segments());
         log::debug("{}: CompleteMultipartUpload path={}", __FUNCTION__, path.string());

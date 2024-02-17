@@ -84,10 +84,8 @@ void irods::s3::actions::handle_putobject(
 
     // wrap the connection in a shared pointer as the object must last longer than this routine
     std::shared_ptr<irods_connection> conn = std::make_shared<irods_connection>(irods::get_connection(*irods_username)); 
-    //auto conn = irods::get_connection(*irods_username); 
 
     // change the parser to a buffer_body parser and wrap in a shared_ptr
-    //beast::http::request_parser<boost::beast::http::buffer_body> parser{std::move(empty_body_parser)};
     std::shared_ptr parser = std::make_shared<beast::http::request_parser<boost::beast::http::buffer_body>>(std::move(empty_body_parser));
     auto& parser_message = parser->get();
 
@@ -132,7 +130,7 @@ void irods::s3::actions::handle_putobject(
     }
 
     fs::path path;
-    if (auto bucket = irods::s3::resolve_bucket(*conn, url.segments()); bucket.has_value()) {
+    if (auto bucket = irods::s3::resolve_bucket(url.segments()); bucket.has_value()) {
         path = std::move(bucket.value());
         path = irods::s3::finish_path(path, url.segments());
     }

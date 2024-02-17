@@ -7,6 +7,7 @@
 #include "irods/private/s3_api/common.hpp"
 #include "irods/private/s3_api/session.hpp"
 #include "irods/private/s3_api/configuration.hpp"
+#include "irods/private/s3_api/globals.hpp"
 
 #include <irods/filesystem.hpp>
 
@@ -42,6 +43,42 @@ namespace beast = boost::beast;
 namespace fs = irods::experimental::filesystem;
 namespace log = irods::http::log;
 
+using irods_connection = irods::http::connection_facade;
+using irods_default_transport = irods::experimental::io::client::default_transport;
+using buffer_body_serializer = beast::http::response_serializer<beast::http::buffer_body>;
+using buffer_body_response = beast::http::response<beast::http::buffer_body>;
+
+// These are things that need to persist and will be wrapped in std::shared_ptr
+namespace {
+    struct object_get_permanent_vars
+    {
+        object_get_permanent_vars(
+                std::string irods_username,
+                fs::path path)
+            : conn{irods::get_connection(irods_username)}
+            , serializer{response}
+            , xtrans{conn}
+            , d{xtrans, path, irods::experimental::io::root_resource_name{irods::s3::get_resource()}, std::ios_base::in}
+        { 
+        }
+    
+        irods_connection conn;
+        buffer_body_response response;
+        buffer_body_serializer serializer;
+        irods_default_transport xtrans;
+        irods::experimental::io::idstream d;
+    };
+} // end default namespace
+
+void read_from_irods_send_to_client(
+    irods::http::session_pointer_type session_ptr,
+    std::shared_ptr<object_get_permanent_vars> vars,
+    std::size_t range_start,
+    std::size_t range_end,
+    std::size_t offset,
+    uint64_t write_buffer_size,
+    const std::string func);
+
 const static std::string_view date_format{"{:%a, %d %b %Y %H:%M:%S GMT}"};
 
 void irods::s3::actions::handle_getobject(
@@ -49,6 +86,7 @@ void irods::s3::actions::handle_getobject(
     beast::http::request_parser<boost::beast::http::empty_body>& parser,
     const boost::urls::url_view& url)
 {
+
     beast::http::response<beast::http::empty_body> response;
 
     // Permission verification stuff should go roughly here.
@@ -62,10 +100,8 @@ void irods::s3::actions::handle_getobject(
         return;
     }
 
-    auto conn = irods::get_connection(*irods_username); 
-
     fs::path path;
-    if (auto bucket = irods::s3::resolve_bucket(conn, url.segments()); bucket.has_value()) {
+    if (auto bucket = irods::s3::resolve_bucket(url.segments()); bucket.has_value()) {
         path = bucket.value();
         path = irods::s3::finish_path(path, url.segments());
     }
@@ -76,6 +112,9 @@ void irods::s3::actions::handle_getobject(
         session_ptr->send(std::move(response)); 
         return;
     }
+
+    std::shared_ptr<object_get_permanent_vars> permanent_vars_ptr =
+        std::make_shared<object_get_permanent_vars>(*irods_username, path);
 
     // read the range header if it exists
     // Note:  We are only implementing range headers in the format range: bytes=<start>-[end]
@@ -122,15 +161,11 @@ void irods::s3::actions::handle_getobject(
     } 
 
     try {
-        if (fs::client::exists(conn, path)) {
-            beast::http::response<beast::http::buffer_body> buffer_body_response{std::move(response)};
-            beast::http::response_serializer<beast::http::buffer_body> serializer{buffer_body_response};
+        if (fs::client::exists(permanent_vars_ptr->conn, path)) {
 
             uint64_t write_buffer_size = irods::s3::get_get_object_buffer_size_in_bytes();
-            log::debug("{}: Write buffer size = {}", __FUNCTION__, write_buffer_size);
-            std::vector<char> buf_vector(write_buffer_size);
 
-            auto file_size = irods::experimental::filesystem::client::data_object_size(conn, path);
+            auto file_size = irods::experimental::filesystem::client::data_object_size(permanent_vars_ptr->conn, path);
             if (range_end == 0 || range_end > file_size - 1) {
                 range_end = file_size - 1;
             }
@@ -138,90 +173,50 @@ void irods::s3::actions::handle_getobject(
 
             // Set the Content-Length header
             std::string length_field = std::to_string(content_length);
-            buffer_body_response.insert(beast::http::field::content_length, length_field);
+            permanent_vars_ptr->response.insert(beast::http::field::content_length, length_field);
 
             // Get the file MD5 and set the Content-MD5 header
-            auto md5 = irods::experimental::filesystem::client::data_object_checksum(conn, path);
-            buffer_body_response.insert("Content-MD5", md5);
+            auto md5 = irods::experimental::filesystem::client::data_object_checksum(permanent_vars_ptr->conn, path);
+            permanent_vars_ptr->response.insert("Content-MD5", md5);
 
             // Get the last write time and set the Last-Mofified header
-            auto last_write_time__time_point = irods::experimental::filesystem::client::last_write_time(conn, path);
+            auto last_write_time__time_point = irods::experimental::filesystem::client::last_write_time(permanent_vars_ptr->conn, path);
             std::time_t last_write_time__time_t = std::chrono::system_clock::to_time_t(last_write_time__time_point);
             std::string last_write_time__str = irods::s3::api::common_routines::convert_time_t_to_str(last_write_time__time_t, date_format);
-            buffer_body_response.insert(beast::http::field::last_modified, last_write_time__str);
-
-            irods::experimental::io::client::default_transport xtrans{conn};
-            irods::experimental::io::idstream d{
-                xtrans, path, irods::experimental::io::root_resource_name{irods::s3::get_resource()}};
+            permanent_vars_ptr->response.insert(beast::http::field::last_modified, last_write_time__str);
 
             // seek to the start range
-            d.seekg(range_start);
+            permanent_vars_ptr->d.seekg(range_start);
             size_t offset = range_start;
 
-            if (d.fail() || d.bad()) {
+            if (permanent_vars_ptr->d.fail() || permanent_vars_ptr->d.bad()) {
                 log::error("{}: Fail/badbit set", __FUNCTION__);
-                buffer_body_response.result(beast::http::status::forbidden);
-                buffer_body_response.body().more = false;
-                log::debug("{}: returned {}", __FUNCTION__, buffer_body_response.reason());
-                session_ptr->send(std::move(buffer_body_response)); 
+                permanent_vars_ptr->response.result(beast::http::status::forbidden);
+                permanent_vars_ptr->response.body().more = false;
+                log::debug("{}: returned {}", __FUNCTION__, permanent_vars_ptr->response.reason());
+                session_ptr->send(std::move(permanent_vars_ptr->response)); 
                 return;
             }
             beast::error_code ec;
-            beast::http::write_header(session_ptr->stream().socket(), serializer, ec);
+            beast::http::write_header(session_ptr->stream().socket(), permanent_vars_ptr->serializer, ec);
             if (ec) {
-                buffer_body_response.result(beast::http::status::internal_server_error);
-                log::debug("{}: returned {}", __FUNCTION__, buffer_body_response.reason());
-                session_ptr->send(std::move(buffer_body_response)); 
+                permanent_vars_ptr->response.result(beast::http::status::internal_server_error);
+                log::debug("{}: returned {}", __FUNCTION__, permanent_vars_ptr->response.reason());
+                session_ptr->send(std::move(permanent_vars_ptr->response)); 
                 return;
             }
 
-            // TODO Break this up into chunks and after each chunk is sent, schedule a background
-            // task to send another chunk, and return from this background task.  This will allow
-            // equal access for all clients.
-            std::streampos current, size;
-            while (d.good()) {
-                buffer_body_response.result(beast::http::status::ok);
+            // set the response to ok 
+            permanent_vars_ptr->response.result(beast::http::status::ok);
 
-                // Determine the length we need to read which is the smaller
-                // of the write_buffer_size or the bytes to the end of the range.
-                // Note that ranges are inclusive which is why the +1's exist. 
-                std::size_t read_length
-                    = write_buffer_size < range_end + 1 - offset 
-                    ? write_buffer_size 
-                    : range_end + 1 - offset;
-
-                d.read(buf_vector.data(), read_length);
-                current = d.gcount();
-                offset += current;
-                size += current;
-                buffer_body_response.body().data = buf_vector.data();
-                buffer_body_response.body().size = current;
-                if (d.bad()) {
-                    // An error occurred on reading from iRODS.  We have already sent
-                    // the response in the header.  All we can do is bail.
-                    log::error("{}: Badbit set on read from iRODS.  Bailing...", __FUNCTION__);
-                    return;
-                }
-                beast::http::write(session_ptr->stream().socket(), serializer, ec);
-                if (ec == beast::http::error::need_buffer) {
-                    ec = {};
-                } else if (ec) {
-                    // An error occurred writing the body data.  We have already sent
-                    // the response in the header.  All we can do is bail.
-                    log::error("{}: Error {} occurred while sending socket data.  Bailing...", __FUNCTION__, ec.message());
-                    return;
-                }
-
-                // If we have now read beyond the range_end then we are done.  Break out.
-                if (offset > range_end) {
-                    break;
-                }
-            }
-            buffer_body_response.body().size = d.gcount();
-            log::debug("{}: Write {} bytes total", __FUNCTION__, size);
-            buffer_body_response.body().more = false;
-            log::debug("{}: returned {} error={}", __FUNCTION__, buffer_body_response.reason(), ec.message());
-            return;
+            read_from_irods_send_to_client(
+                session_ptr,
+                permanent_vars_ptr,
+                range_start,
+                range_end,
+                offset,
+                write_buffer_size,
+                __FUNCTION__);
         }
         else {
             log::debug("{}: Could not find file", __FUNCTION__);
@@ -264,4 +259,79 @@ void irods::s3::actions::handle_getobject(
     }
 
     // all paths should have a return here
+}
+
+void read_from_irods_send_to_client(
+    irods::http::session_pointer_type session_ptr,
+    std::shared_ptr<object_get_permanent_vars> permanent_vars_ptr,
+    std::size_t range_start,
+    std::size_t range_end,
+    std::size_t offset,
+    uint64_t write_buffer_size,
+    const std::string func)
+{
+    irods::http::globals::background_task([session_ptr,
+        permanent_vars_ptr,
+        range_start,
+        range_end,
+        offset,
+        write_buffer_size,
+        func]() mutable {
+
+        std::vector<char> buf_vector(write_buffer_size);
+
+        std::streampos current, size;
+
+        // Determine the length we need to read which is the smaller
+        // of the write_buffer_size or the bytes to the end of the range.
+        // Note that ranges are inclusive which is why the +1's exist. 
+        std::size_t read_length
+            = write_buffer_size < range_end + 1 - offset 
+            ? write_buffer_size 
+            : range_end + 1 - offset;
+
+        // read from iRODS
+        permanent_vars_ptr->d.read(buf_vector.data(), read_length);
+        current = permanent_vars_ptr->d.gcount();
+        offset += current;
+        size += current;
+        permanent_vars_ptr->response.body().data = buf_vector.data();
+        permanent_vars_ptr->response.body().size = current;
+        if (permanent_vars_ptr->d.bad()) {
+            // An error occurred on reading from iRODS. We have already sent
+            // the response in the header. All we can do is bail.
+            log::error("{}: Badbit set on read from iRODS. Bailing...", func);
+            return;
+        }
+
+        // write to socket
+        boost::beast::error_code ec;
+        beast::http::write(session_ptr->stream().socket(), permanent_vars_ptr->serializer, ec);
+        if (ec == beast::http::error::need_buffer) {
+            ec = {};
+        } else if (ec) {
+            // An error occurred writing the body data. We have already sent
+            // the response in the header. All we can do is bail.
+            log::error("{}: Error {} occurred while sending socket data. Bailing...", func, ec.message());
+            return;
+        }
+
+        log::trace("{}: Wrote {} bytes total.  offset={}", func, size, offset);
+
+        // If we have now read beyond the range_end then we are done. Return.
+        if (offset > range_end) {
+            permanent_vars_ptr->response.body().more = false;
+            log::debug("{} returned {} error={}", __FUNCTION__, permanent_vars_ptr->response.reason(), ec.message());
+            return;
+        }
+
+        read_from_irods_send_to_client(
+            session_ptr,
+            permanent_vars_ptr,
+            range_start,
+            range_end,
+            offset,
+            write_buffer_size,
+            func);
+    });
 }
