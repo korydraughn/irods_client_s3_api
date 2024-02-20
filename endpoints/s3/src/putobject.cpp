@@ -59,6 +59,8 @@ void beast_parse_body_write_to_irods_in_background(
     std::shared_ptr<std::ofstream> ofs,
     std::shared_ptr<irods::experimental::io::odstream> d,
     bool upload_part,
+    uint64_t total_bytes_read,
+    const::std::string part_number,
     const std::string func);
 
 void irods::s3::actions::handle_putobject(
@@ -254,6 +256,7 @@ void irods::s3::actions::handle_putobject(
 
     } else {
         // Let boost::beast::parser handle the body
+        uint64_t total_bytes_read = 0;
         parser->eager(true);
         beast_parse_body_write_to_irods_in_background(
                 session_ptr,
@@ -263,6 +266,8 @@ void irods::s3::actions::handle_putobject(
                 ofs,
                 d,
                 upload_part,
+                total_bytes_read,
+                part_number,
                 __FUNCTION__);
     }
 
@@ -542,6 +547,8 @@ void beast_parse_body_write_to_irods_in_background(
     std::shared_ptr<std::ofstream> ofs,
     std::shared_ptr<irods::experimental::io::odstream> d,
     bool upload_part,
+    uint64_t total_bytes_read,
+    const::std::string part_number,
     const std::string func)
 {
     irods::http::globals::background_task([session_ptr,
@@ -551,6 +558,8 @@ void beast_parse_body_write_to_irods_in_background(
         ofs,
         d,
         upload_part,
+        total_bytes_read,
+        part_number,
         func]() mutable {
 
         bool ready_to_write_to_irods = false;
@@ -566,7 +575,7 @@ void beast_parse_body_write_to_irods_in_background(
         // a new task to write the next buffer to iRODS
         while (!ready_to_write_to_irods) {
 
-            beast::http::read_some(session_ptr->stream(), session_ptr->get_buffer(), *parser, ec);
+            beast::http::read(session_ptr->stream(), session_ptr->get_buffer(), *parser, ec);
 
             // need buffer means we have filled the current parser, write it to iRODS
             if (ec == beast::http::error::need_buffer) {
@@ -575,7 +584,7 @@ void beast_parse_body_write_to_irods_in_background(
             }
 
             if (ec) {
-                log::error("{}: Error when parsing file - {}", func, ec.what());
+                log::error("{}: Error when parsing file - {} - part_number={}, total_bytes_read={}", func, ec.what(), part_number, total_bytes_read);
                 response.result(beast::http::status::internal_server_error);
                 log::debug("{}: returned {}", func, response.reason());
                 session_ptr->send(std::move(response));
@@ -584,6 +593,7 @@ void beast_parse_body_write_to_irods_in_background(
 
             if (ready_to_write_to_irods || parser->is_done()) {
                 size_t read_bytes = read_buffer_size - parser_message.body().size;
+                total_bytes_read += read_bytes;
                 try {
                     if (upload_part) {
                         ofs->write((char*) buf_vector.data(), read_bytes);
@@ -618,6 +628,8 @@ void beast_parse_body_write_to_irods_in_background(
                 ofs,
                 d,
                 upload_part,
+                total_bytes_read,
+                part_number,
                 func);
     });
 }

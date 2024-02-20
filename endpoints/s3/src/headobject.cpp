@@ -87,6 +87,13 @@ void irods::s3::actions::handle_headobject(
            log::debug("{}: returned {}", __FUNCTION__, response.reason());
            session_ptr->send(std::move(response)); 
            return;
+           /*return irods::s3::api::common_routines::send_error_response(
+                   session_ptr,
+                   boost::beast::http::status::not_found,
+                   "NoSuchKey",
+                   "Object does not exist",
+                   url.path(),
+                   __FUNCTION__);*/
        }
     }
     catch (std::system_error& e) {
