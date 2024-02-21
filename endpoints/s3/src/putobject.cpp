@@ -257,7 +257,6 @@ void irods::s3::actions::handle_putobject(
     } else {
         // Let boost::beast::parser handle the body
         uint64_t total_bytes_read = 0;
-        parser->eager(true);
         beast_parse_body_write_to_irods_in_background(
                 session_ptr,
                 response,
@@ -331,8 +330,8 @@ void manually_parse_chunked_body_write_to_irods_in_background(
         bool need_more = false;
 
         // add the current buffer into the parsing_buffer_string
-        size_t read_bytes = read_buffer_size - parser_message.body().size;
-        parsing_buffer_string.append(buf_vector.data(), read_bytes);
+        size_t bytes_read = read_buffer_size - parser_message.body().size;
+        parsing_buffer_string.append(buf_vector.data(), bytes_read);
 
         // continue parsing until we need more bytes in parsing_buffer_string
         while (!parser->is_done() || !parsing_buffer_string.empty()) {
@@ -577,6 +576,8 @@ void beast_parse_body_write_to_irods_in_background(
 
             beast::http::read(session_ptr->stream(), session_ptr->get_buffer(), *parser, ec);
 
+            size_t size_left_in_buffer = parser_message.body().size;
+
             // need buffer means we have filled the current parser, write it to iRODS
             if (ec == beast::http::error::need_buffer) {
                 ready_to_write_to_irods = true;
@@ -584,7 +585,7 @@ void beast_parse_body_write_to_irods_in_background(
             }
 
             if (ec) {
-                log::error("{}: Error when parsing file - {} - part_number={}, total_bytes_read={}", func, ec.what(), part_number, total_bytes_read);
+                log::error("{}: Error when parsing file - {} - part_number={}, total_bytes_read={} size_left_in_buffer={}", func, ec.what(), part_number, total_bytes_read, size_left_in_buffer);
                 response.result(beast::http::status::internal_server_error);
                 log::debug("{}: returned {}", func, response.reason());
                 session_ptr->send(std::move(response));
@@ -592,14 +593,15 @@ void beast_parse_body_write_to_irods_in_background(
             }
 
             if (ready_to_write_to_irods || parser->is_done()) {
-                size_t read_bytes = read_buffer_size - parser_message.body().size;
-                total_bytes_read += read_bytes;
+                size_t bytes_read = read_buffer_size - parser_message.body().size;
+                total_bytes_read += bytes_read;
                 try {
                     if (upload_part) {
-                        ofs->write((char*) buf_vector.data(), read_bytes);
+                        ofs->write((char*) buf_vector.data(), bytes_read);
+                        log::trace("{}: part_number={}, wrote {} bytes", func, part_number, bytes_read);
                     } else {
-                        d->write((char*) buf_vector.data(), read_bytes);
-                        log::trace("{}: wrote {} bytes", func, read_bytes);
+                        d->write((char*) buf_vector.data(), bytes_read);
+                        log::trace("{}: part_number={}, wrote {} bytes", func, part_number, bytes_read);
                     }
                 }
                 catch (std::exception& e) {
