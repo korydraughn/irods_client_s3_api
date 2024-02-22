@@ -596,6 +596,7 @@ void beast_parse_body_write_to_irods_in_background(
                 size_t bytes_read = read_buffer_size - parser_message.body().size;
                 total_bytes_read += bytes_read;
                 try {
+                    log::trace("{}: part_number={}, bytes_read/written={} total_bytes_read/written={}", func, part_number, bytes_read, total_bytes_read);
                     if (upload_part) {
                         ofs->write((char*) buf_vector.data(), bytes_read);
                         log::trace("{}: part_number={}, wrote {} bytes", func, part_number, bytes_read);
