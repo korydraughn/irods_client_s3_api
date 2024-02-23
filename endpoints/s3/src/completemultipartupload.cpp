@@ -368,9 +368,9 @@ void irods::s3::actions::handle_completemultipartupload(
     d.close();
 
     // remove the temporary part files - should we do this on failure?
-    /*for (int i = 0; i < max_part_number; ++i) {
+    for (int i = 0; i < max_part_number; ++i) {
         std::remove(part_info_vector[i].part_filename.c_str());
-    }*/
+    }
 
     // check to see if any threads failed
     if (upload_status.fail_flag) {

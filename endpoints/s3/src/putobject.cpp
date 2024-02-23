@@ -224,6 +224,7 @@ void irods::s3::actions::handle_putobject(
 
     response.set("Etag", path.c_str());
     response.set("Connection", "close");
+    response.keep_alive(parser_message.keep_alive());
 
     if (special_chunked_header) {
 
@@ -561,8 +562,6 @@ void beast_parse_body_write_to_irods_in_background(
         part_number,
         func]() mutable {
 
-        bool ready_to_write_to_irods = false;
-
         auto& parser_message = parser->get();
         boost::beast::error_code ec;
 
@@ -570,56 +569,48 @@ void beast_parse_body_write_to_irods_in_background(
         parser_message.body().data = buf_vector.data();
         parser_message.body().size = read_buffer_size; 
 
-        // once we have filled the currently buffer, write it to iRODS and schedule
-        // a new task to write the next buffer to iRODS
-        while (!ready_to_write_to_irods) {
+        beast::http::read(session_ptr->stream(), session_ptr->get_buffer(), *parser, ec);
 
-            beast::http::read(session_ptr->stream(), session_ptr->get_buffer(), *parser, ec);
+        size_t size_left_in_buffer = parser_message.body().size;
 
-            size_t size_left_in_buffer = parser_message.body().size;
+        // need buffer means we have filled the current parser, write it to iRODS
+        if (ec == beast::http::error::need_buffer) {
+            ec = {};
+        }
 
-            // need buffer means we have filled the current parser, write it to iRODS
-            if (ec == beast::http::error::need_buffer) {
-                ready_to_write_to_irods = true;
-                ec = {};
+        if (ec) {
+            log::error("{}: Error when parsing file - {} - part_number={}, total_bytes_read={} size_left_in_buffer={}", func, ec.what(), part_number, total_bytes_read, size_left_in_buffer);
+            response.result(beast::http::status::internal_server_error);
+            log::debug("{}: returned {}", func, response.reason());
+            session_ptr->send(std::move(response));
+            return;
+        }
+
+        size_t bytes_read = read_buffer_size - parser_message.body().size;
+        total_bytes_read += bytes_read;
+        try {
+            log::trace("{}: part_number={}, bytes_read/written={} total_bytes_read/written={}", func, part_number, bytes_read, total_bytes_read);
+            if (upload_part) {
+                ofs->write((char*) buf_vector.data(), bytes_read);
+                log::trace("{}: part_number={}, wrote {} bytes", func, part_number, bytes_read);
+            } else {
+                d->write((char*) buf_vector.data(), bytes_read);
+                log::trace("{}: part_number={}, wrote {} bytes", func, part_number, bytes_read);
             }
+        }
+        catch (std::exception& e) {
+            log::error("{}: Exception when writing to file - {}", func, e.what());
+            response.result(beast::http::status::internal_server_error);
+            log::debug("{}: returned {}", func, response.reason());
+            session_ptr->send(std::move(response));
+            return;
+        }
 
-            if (ec) {
-                log::error("{}: Error when parsing file - {} - part_number={}, total_bytes_read={} size_left_in_buffer={}", func, ec.what(), part_number, total_bytes_read, size_left_in_buffer);
-                response.result(beast::http::status::internal_server_error);
-                log::debug("{}: returned {}", func, response.reason());
-                session_ptr->send(std::move(response));
-                return;
-            }
-
-            if (ready_to_write_to_irods || parser->is_done()) {
-                size_t bytes_read = read_buffer_size - parser_message.body().size;
-                total_bytes_read += bytes_read;
-                try {
-                    log::trace("{}: part_number={}, bytes_read/written={} total_bytes_read/written={}", func, part_number, bytes_read, total_bytes_read);
-                    if (upload_part) {
-                        ofs->write((char*) buf_vector.data(), bytes_read);
-                        log::trace("{}: part_number={}, wrote {} bytes", func, part_number, bytes_read);
-                    } else {
-                        d->write((char*) buf_vector.data(), bytes_read);
-                        log::trace("{}: part_number={}, wrote {} bytes", func, part_number, bytes_read);
-                    }
-                }
-                catch (std::exception& e) {
-                    log::error("{}: Exception when writing to file - {}", func, e.what());
-                    response.result(beast::http::status::internal_server_error);
-                    log::debug("{}: returned {}", func, response.reason());
-                    session_ptr->send(std::move(response));
-                    return;
-                }
-                if (parser->is_done()) {
-                    response.result(beast::http::status::ok);
-                    log::debug("{}: returned {}", func, response.reason());
-                    session_ptr->send(std::move(response)); 
-                    return;
-                } 
-                break;
-            }
+        if (parser->is_done()) {
+            response.result(beast::http::status::ok);
+            log::debug("{}: returned {}", func, response.reason());
+            session_ptr->send(std::move(response)); 
+            return;
         }
 
         // schedule a new task to continue
