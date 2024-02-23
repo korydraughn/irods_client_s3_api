@@ -180,7 +180,13 @@ void irods::s3::actions::handle_putobject(
             return;
         }
 
-        upload_part_filename = upload_id + "." + part_number;
+        // get the base location for the part files
+        const nlohmann::json& config = irods::http::globals::configuration();
+        std::string part_file_location = config.value(
+                nlohmann::json::json_pointer{"/s3_server/location_part_upload_files"}, ".");
+
+        // the current part file full path
+        upload_part_filename = part_file_location + "/" + upload_id + "." + part_number;
         log::debug("{}: UploadPart detected.  partNumber={} uploadId={}", __FUNCTION__, part_number, upload_id);
     }
 
@@ -197,6 +203,7 @@ void irods::s3::actions::handle_putobject(
 
     if (upload_part) {
         ofs->open(upload_part_filename, std::ofstream::out);
+        // TODO fs::resize_file(p, content_length);
         if (!ofs->is_open()) {
             log::error("{}: Failed to open stream for writing part", __FUNCTION__);
             response.result(beast::http::status::internal_server_error);

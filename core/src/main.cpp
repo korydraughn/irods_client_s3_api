@@ -777,6 +777,7 @@ auto main(int _argc, char* _argv[]) -> int
 		const auto request_thread_count =
 			std::max(s3_server_config.at(json::json_pointer{"/requests/threads"}).get<int>(), 1);
 
+        log::info("request_thread_count={}", request_thread_count);
 		log::trace("Initializing TLS.");
 		init_tls(config);
 

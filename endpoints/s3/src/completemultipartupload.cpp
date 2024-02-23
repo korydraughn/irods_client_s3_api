@@ -209,9 +209,14 @@ void irods::s3::actions::handle_completemultipartupload(
     std::vector<part_info_t> part_info_vector;
     part_info_vector.reserve(max_part_number);
 
+    // get the base location for the part files
+    const nlohmann::json& config = irods::http::globals::configuration();
+    std::string part_file_location = config.value(
+            nlohmann::json::json_pointer{"/s3_server/location_part_upload_files"}, ".");
+
     uint64_t offset_counter = 0;
     for (int current_part_number = 1; current_part_number <= max_part_number; ++current_part_number) {
-        std::string part_filename = upload_id + "." + std::to_string(current_part_number);
+        std::string part_filename = part_file_location + "/" + upload_id + "." + std::to_string(current_part_number);
         try {
             auto part_size = std::filesystem::file_size(part_filename);
             part_info_vector.push_back({part_filename, offset_counter, part_size});
