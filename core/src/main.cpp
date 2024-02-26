@@ -206,6 +206,9 @@ constexpr auto default_jsonschema() -> std::string_view
                 "region": {{
                     "type": "string"
                 }},
+                "location_part_upload_files": {{
+                    "type": "string"
+                }},
                 "authentication": {{
                     "type": "object",
                     "properties": {{

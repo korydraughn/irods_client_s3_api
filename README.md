@@ -284,6 +284,10 @@ Notice how some of the configuration values are wrapped in angle brackets (e.g. 
         // Defines the region the server will report as being a member of.
         "region": "us-east-1",
 
+        // Defines the location where part files are temporarily stored on the irods_s3_api
+        // server before being streamed to iRODS. 
+        "location_part_upload_files": "/tmp",
+
         // Defines options that affect various authentication schemes.
         "authentication": {
             // The amount of time that must pass before checking for expired
@@ -485,6 +489,7 @@ Run the following commands to run the test suite.
 
 ```bash
 cd tests/docker
+./build_s3_api.sh
 docker compose build
 docker compose run client
 ```
