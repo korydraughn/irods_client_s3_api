@@ -634,11 +634,23 @@ void manually_parse_chunked_body_write_to_irods_in_background(
 
             // if we are done return ok
             if (current_state == parsing_state::parsing_done) {
+                if (upload_part) {
+                    ofs->close();
+                }
+                else {
+                    d->close();
+                }
                 response.result(beast::http::status::ok);
                 log::debug("{}: returned {}:{}", func, response.reason(), __LINE__);
                 session_ptr->send(std::move(response)); 
                 return;
             } else if (current_state == parsing_state::parsing_error) {
+                if (upload_part) {
+                    ofs->close();
+                }
+                else {
+                    d->close();
+                }
                 log::error("{}: Error parsing chunked body", func);
                 response.result(boost::beast::http::status::bad_request);
                 log::debug("{}: returned {}", func, response.reason());
